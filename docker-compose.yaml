@@ -1,0 +1,41 @@
+version: "3.10"
+
+networks:
+  shared: { }
+
+services:
+  api:
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [ shared ]
+    env_file:
+      - .env
+    environment:
+      PG_DSN: postgres://postgres:postgres@postgres:5432/app
+
+  postgres:
+    image: postgres:15-alpine
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d app" ]
+      interval: 2s
+      timeout: 1s
+      retries: 5
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    networks: [ shared ]
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+
+volumes:
+  postgres-data:

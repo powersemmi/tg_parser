@@ -1,0 +1,27 @@
+repos:
+- repo: https://github.com/psf/black
+  rev: 23.7.0
+  hooks:
+    - id: black
+      language_version: python3.11
+- repo: https://github.com/pycqa/flake8
+  rev: 6.1.0
+  hooks:
+    - id: flake8
+      additional_dependencies: [ Flake8-pyproject ]
+- repo: https://github.com/pycqa/isort
+  rev: 5.12.0 # an isort release exposing the hook
+  hooks:
+    - id: isort
+      name: isort (python)
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v1.4.1  # Use the sha / tag you want to point at
+  hooks:
+  -   id: mypy
+      args: [--strict, --ignore-missing-imports]
+      additional_dependencies: [tokenize-rt==5.2.0]
+- repo: https://github.com/pdm-project/pdm
+  rev: 2.8.2 # a PDM release exposing the hook
+  hooks:
+    - id: pdm-lock-check
+      always_run: true
