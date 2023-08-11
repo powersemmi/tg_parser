@@ -1,5 +1,6 @@
 import logging
-from typing import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator
 
 import orjson
 from sqlalchemy.ext.asyncio import (
@@ -9,6 +10,16 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from tg_chat_parser.settings import settings
+
+
+def orjson_serializer(obj: Any) -> str:
+    """
+    Note that `orjson.dumps()` return byte array, while sqlalchemy expects string, thus `decode()` call.
+    """
+    return orjson.dumps(
+        obj, option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NAIVE_UTC
+    ).decode()
+
 
 engine = create_async_engine(
     str(settings.PG_DSN),
@@ -21,7 +32,7 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_recycle=3600,
     json_deserializer=orjson.dumps,
-    json_serializer=orjson.loads,
+    json_serializer=orjson_serializer,
 )
 
 async_session = async_sessionmaker(
@@ -32,6 +43,7 @@ async_session = async_sessionmaker(
 logger = logging.getLogger(__name__)
 
 
+@asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         yield session

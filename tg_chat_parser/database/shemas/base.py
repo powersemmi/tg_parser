@@ -2,12 +2,15 @@ from datetime import datetime
 from typing import Any, Self
 
 from sqlalchemy import BigInteger, func, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql.roles import ExpressionElementRole
 
 
 class Base(DeclarativeBase):
+    type_annotation_map = {dict[str, Any]: JSONB}
+
     @classmethod
     async def _create(
         cls, session: AsyncSession, **kwargs: dict[str, Any]
