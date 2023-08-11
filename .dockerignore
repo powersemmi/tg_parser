@@ -166,3 +166,5 @@ Dockerfile
 docker-compose.yaml
 .secrets
 .dockerignore
+*.session*
+tmp/
