@@ -18,10 +18,11 @@ services:
     env_file:
       - .env
     environment:
-      - postgres://postgres:postgres@postgres:5432/app
+      - PG_DSN=postgresql+asyncpg://postgres:postgres@postgres:5432/app
     secrets:
       - TG_API_ID
       - TG_API_HASH
+    entrypoint: bash -c "python -m alembic upgrade head && python -m tg_chat_parser"
   postgres:
     image: postgres:15-alpine
     healthcheck:
