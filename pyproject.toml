@@ -1,5 +1,6 @@
+[tool.pdm]
 [project]
-name = "GlideApps-chat-parser"
+name = "tg-chat-parser"
 version = "0.0.1"
 description = "GlideApps telegram-client parser"
 authors = [
@@ -8,11 +9,14 @@ authors = [
 dependencies = [
     "telethon==1.29.*",
     "httpx==0.24.*",
-    "sqlalchemy[asyncio]==2.0.*",
+    "sqlalchemy[asyncio,mypy]==2.0.*",
     "alembic==1.11.*",
     "asyncpg==0.28.*",
     "logging518==1.0.*",
     "pydantic==2.1.*",
+    "pydantic-settings==2.0.*",
+    "orjson==3.9.*",
+    "click==8.1.*",
 ]
 requires-python = ">=3.11"
 readme = "README.md"
@@ -31,7 +35,7 @@ migrate = "alembic upgrade head"
 downgrade = "alembic downgrade"
 makemigration = "alembic revision --autogenerate -m"
 # run
-main = "python -m src"
+main = "python -m tg_chat_parser"
 
 [tool.pdm.dev-dependencies]
 dev = [
@@ -42,12 +46,16 @@ dev = [
     "flake8-pyproject>=1.2.3",
 ]
 
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
 [tool.black]
 line-length = 79
 
 [tool.isort]
 profile = "black"
-line_length = 120
+line_length = 79
 
 [tool.flake8]
 ignore = ["W291", "E203"]
@@ -63,6 +71,10 @@ exclude = [
 ]
 max-line-length = 120
 count = true
+
+[tool.mypy]
+plugins = "pydantic.mypy,sqlalchemy.ext.mypy.plugin"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,5 +1,5 @@
 FROM python:3.11-slim as builder
-LABEL authors="moloko"
+LABEL authors="powersemmi@gmail.com"
 
 ENV PIP_NO_CACHE_DIR=OFF \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
@@ -25,11 +25,9 @@ ENV PYTHONPATH=/opt/app/pkgs \
     PYTHONFAULTHANDLER=1 \
     PYTHONBUFFERED=1
 
-COPY --from=builder /opt/app/__pypackages__/3.10/lib /opt/app/pkgs
+COPY --from=builder /opt/app/__pypackages__/3.11/lib /opt/app/pkgs
 
 WORKDIR /opt/app
 COPY . .
 
-CMD ["python", "-m", "app"]
-
-ENTRYPOINT ["python", "-m", "src"]
+ENTRYPOINT ["python", "-m", "tg_chat_parser"]
