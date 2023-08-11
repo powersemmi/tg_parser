@@ -17,8 +17,9 @@ services:
     networks: [ shared ]
     env_file:
       - .env
+    environment:
+      - postgres://postgres:postgres@postgres:5432/app
     secrets:
-      - PG_DSN
       - TG_API_ID
       - TG_API_HASH
   postgres:
@@ -39,8 +40,6 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
 secrets:
-   PG_DSN:
-     file: .secrets/PG_DSN
    TG_API_ID:
      file: .secrets/TG_API_ID
    TG_API_HASH:
