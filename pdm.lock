@@ -6,7 +6,7 @@ groups = ["default", "dev"]
 cross_platform = true
 static_urls = false
 lock_version = "4.3"
-content_hash = "sha256:f29b9e192f85d5ac2bb3728d0ba9693036518c0b377dca25ec37107a3d959a1c"
+content_hash = "sha256:91fc226e4e4692566d905e109da0ca5d365b3242c1d9a4cedbf66af4ff2e3b2e"
 
 [[package]]
 name = "alembic"
@@ -288,21 +288,21 @@ files = [
 
 [[package]]
 name = "mypy"
-version = "1.4.1"
-requires_python = ">=3.7"
+version = "1.5.0"
+requires_python = ">=3.8"
 summary = "Optional static typing for Python"
 dependencies = [
     "mypy-extensions>=1.0.0",
     "typing-extensions>=4.1.0",
 ]
 files = [
-    {file = "mypy-1.4.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:7549fbf655e5825d787bbc9ecf6028731973f78088fbca3a1f4145c39ef09462"},
-    {file = "mypy-1.4.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:98324ec3ecf12296e6422939e54763faedbfcc502ea4a4c38502082711867258"},
-    {file = "mypy-1.4.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:141dedfdbfe8a04142881ff30ce6e6653c9685b354876b12e4fe6c78598b45e2"},
-    {file = "mypy-1.4.1-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:8207b7105829eca6f3d774f64a904190bb2231de91b8b186d21ffd98005f14a7"},
-    {file = "mypy-1.4.1-cp311-cp311-win_amd64.whl", hash = "sha256:16f0db5b641ba159eff72cff08edc3875f2b62b2fa2bc24f68c1e7a4e8232d01"},
-    {file = "mypy-1.4.1-py3-none-any.whl", hash = "sha256:45d32cec14e7b97af848bddd97d85ea4f0db4d5a149ed9676caa4eb2f7402bb4"},
-    {file = "mypy-1.4.1.tar.gz", hash = "sha256:9bbcd9ab8ea1f2e1c8031c21445b511442cc45c89951e49bbf852cbb70755b1b"},
+    {file = "mypy-1.5.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:c36011320e452eb30bec38b9fd3ba20569dc9545d7d4540d967f3ea1fab9c374"},
+    {file = "mypy-1.5.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:f3940cf5845b2512b3ab95463198b0cdf87975dfd17fdcc6ce9709a9abe09e69"},
+    {file = "mypy-1.5.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9166186c498170e1ff478a7f540846b2169243feb95bc228d39a67a1a450cdc6"},
+    {file = "mypy-1.5.0-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:725b57a19b7408ef66a0fd9db59b5d3e528922250fb56e50bded27fea9ff28f0"},
+    {file = "mypy-1.5.0-cp311-cp311-win_amd64.whl", hash = "sha256:eec5c927aa4b3e8b4781840f1550079969926d0a22ce38075f6cfcf4b13e3eb4"},
+    {file = "mypy-1.5.0-py3-none-any.whl", hash = "sha256:69b32d0dedd211b80f1b7435644e1ef83033a2af2ac65adcdc87c38db68a86be"},
+    {file = "mypy-1.5.0.tar.gz", hash = "sha256:f3460f34b3839b9bc84ee3ed65076eb827cd99ed13ed08d723f9083cada4a212"},
 ]
 
 [[package]]
@@ -313,6 +313,30 @@ summary = "Type system extensions for programs checked with the mypy type checke
 files = [
     {file = "mypy_extensions-1.0.0-py3-none-any.whl", hash = "sha256:4392f6c0eb8a5668a69e23d168ffa70f0be9ccfd32b5cc2d26a34ae5b844552d"},
     {file = "mypy_extensions-1.0.0.tar.gz", hash = "sha256:75dbf8955dc00442a438fc4d0666508a9a97b6bd41aa2f0ffe9d2f2725af0782"},
+]
+
+[[package]]
+name = "orjson"
+version = "3.9.4"
+requires_python = ">=3.7"
+summary = "Fast, correct Python JSON library supporting dataclasses, datetimes, and numpy"
+files = [
+    {file = "orjson-3.9.4-cp311-cp311-macosx_10_15_x86_64.macosx_11_0_arm64.macosx_10_15_universal2.whl", hash = "sha256:daeed2502ddf1f2b29ec8da2fe2ea82807a5c4acf869608ce6c476db8171d070"},
+    {file = "orjson-3.9.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:73d9507a547202f0dd0672e529ce3ca45582d152369c684a9ce75677ce5ae089"},
+    {file = "orjson-3.9.4-cp311-cp311-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:144a3b8c7cbdd301e1b8cd7dd33e3cbfe7b011df2bebd45b84bacc8cb490302d"},
+    {file = "orjson-3.9.4-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:ef7119ebc9b76d5e37c330596616c697d1957779c916aec30cefd28df808f796"},
+    {file = "orjson-3.9.4-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:b75f0fc7a64a95027c6f0c70f17969299bdf2b6a85e342b29fc23be2788bad6f"},
+    {file = "orjson-3.9.4-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1e4b20164809b21966b63e063f894927bc85391e60d0a96fa0bb552090f1319c"},
+    {file = "orjson-3.9.4-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:0e7c3b7e29572ef2d845a59853475f40fdabec53b8b7d6effda4bb26119c07f5"},
+    {file = "orjson-3.9.4-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:d73c0fd54a52a1a1abfad69d4f1dfb7048cd0b3ef1828ddb4920ef2d3739d8fb"},
+    {file = "orjson-3.9.4-cp311-none-win32.whl", hash = "sha256:e12492ce65cb10f385e70a88badc6046bc720fa7d468db27b7429d85d41beaeb"},
+    {file = "orjson-3.9.4-cp311-none-win_amd64.whl", hash = "sha256:3b9f8bf43a5367d5522f80e7d533c98d880868cd0b640b9088c9237306eca6e8"},
+    {file = "orjson-3.9.4-cp312-cp312-macosx_10_15_x86_64.macosx_11_0_arm64.macosx_10_15_universal2.whl", hash = "sha256:0b400cf89c15958cd829c8a4ade8f5dd73588e63d2fb71a00483e7a74e9f92da"},
+    {file = "orjson-3.9.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:23d3b6f2706cb324661899901e6b1fcaee4f5aac7d7588306df3f43e68173840"},
+    {file = "orjson-3.9.4-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:3932b06abf49135c93816c74139c7937fa54079fce3f44db2d598859894c344a"},
+    {file = "orjson-3.9.4-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:562cf24f9f11df8099e0e78859ba6729e7caa25c2f3947cb228d9152946c854b"},
+    {file = "orjson-3.9.4-cp312-none-win_amd64.whl", hash = "sha256:a533e664a0e3904307d662c5d45775544dc2b38df6e39e213ff6a86ceaa3d53c"},
+    {file = "orjson-3.9.4.tar.gz", hash = "sha256:a4c9254d21fc44526a3850355b89afd0d00ed73bdf902a5ab416df14a61eac6b"},
 ]
 
 [[package]]
@@ -463,6 +487,20 @@ files = [
 ]
 
 [[package]]
+name = "pydantic-settings"
+version = "2.0.2"
+requires_python = ">=3.7"
+summary = "Settings management using Pydantic"
+dependencies = [
+    "pydantic>=2.0.1",
+    "python-dotenv>=0.21.0",
+]
+files = [
+    {file = "pydantic_settings-2.0.2-py3-none-any.whl", hash = "sha256:6183a2abeab465d5a3ab69758e9a22d38b0cc2ba193f0b85f6971a252ea630f6"},
+    {file = "pydantic_settings-2.0.2.tar.gz", hash = "sha256:342337fff50b23585e807a86dec85037900972364435c55c2fc00d16ff080539"},
+]
+
+[[package]]
 name = "pyflakes"
 version = "3.1.0"
 requires_python = ">=3.8"
@@ -486,6 +524,16 @@ dependencies = [
 files = [
     {file = "pytest-7.4.0-py3-none-any.whl", hash = "sha256:78bf16451a2eb8c7a2ea98e32dc119fd2aa758f1d5d66dbf0a59d69a3969df32"},
     {file = "pytest-7.4.0.tar.gz", hash = "sha256:b4bf8c45bd59934ed84001ad51e11b4ee40d40a1229d2c79f9c592b0a3f6bd8a"},
+]
+
+[[package]]
+name = "python-dotenv"
+version = "1.0.0"
+requires_python = ">=3.8"
+summary = "Read key-value pairs from a .env file and set them as environment variables"
+files = [
+    {file = "python-dotenv-1.0.0.tar.gz", hash = "sha256:a8df96034aae6d2d50a4ebe8216326c61c3eb64836776504fcca410e5937a3ba"},
+    {file = "python_dotenv-1.0.0-py3-none-any.whl", hash = "sha256:f5971a9226b701070a4bf2c38c89e5a3f0d64de8debda981d1db98583009122a"},
 ]
 
 [[package]]
@@ -536,11 +584,12 @@ files = [
 [[package]]
 name = "sqlalchemy"
 version = "2.0.19"
-extras = ["asyncio"]
+extras = ["asyncio", "mypy"]
 requires_python = ">=3.7"
 summary = "Database Abstraction Library"
 dependencies = [
     "greenlet!=0.4.17",
+    "mypy>=0.910",
     "sqlalchemy==2.0.19",
 ]
 files = [

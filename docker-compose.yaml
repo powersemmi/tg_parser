@@ -5,7 +5,8 @@ networks:
 
 services:
   api:
-    restart: always
+    restart: no
+    image: tg_chat_parser:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -16,9 +17,10 @@ services:
     networks: [ shared ]
     env_file:
       - .env
-    environment:
-      PG_DSN: postgres://postgres:postgres@postgres:5432/app
-
+    secrets:
+      - PG_DSN
+      - TG_API_ID
+      - TG_API_HASH
   postgres:
     image: postgres:15-alpine
     healthcheck:
@@ -36,6 +38,13 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+secrets:
+   PG_DSN:
+     file: .secrets/PG_DSN
+   TG_API_ID:
+     file: .secrets/TG_API_ID
+   TG_API_HASH:
+     file: .secrets/TG_API_HASH
 
 volumes:
   postgres-data:
