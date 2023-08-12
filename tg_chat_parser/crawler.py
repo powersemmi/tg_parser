@@ -35,6 +35,8 @@ async def worker(client: TelegramClient) -> None:
         if not history.messages:
             break
         messages = history.messages
+        if not messages:
+            break
         total_messages_count += len(messages)
         offset_msg_id = messages[-1].id
         messages_to_create = []
