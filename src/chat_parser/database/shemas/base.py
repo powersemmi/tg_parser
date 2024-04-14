@@ -1,15 +1,15 @@
 from datetime import datetime
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from sqlalchemy import BigInteger, func, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, registry
 from sqlalchemy.sql.roles import ExpressionElementRole
 
 
 class Base(DeclarativeBase):
-    type_annotation_map = {dict[str, Any]: JSONB}
+    type_annotation_map: ClassVar = {dict[str, Any]: JSONB}
 
     @classmethod
     async def _create(
@@ -50,3 +50,5 @@ class BaseSchema(Base):
 
 
 metadata = Base.metadata
+
+mapper_registry = registry(metadata=metadata)
