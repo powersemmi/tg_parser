@@ -7,8 +7,8 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from tg_chat_parser.database.shemas.base import Base
-from tg_chat_parser.settings import settings
+from chat_parser.database.shemas.base import Base
+from chat_parser.settings import settings
 
 log_conf.fileConfig("pyproject.toml")
 

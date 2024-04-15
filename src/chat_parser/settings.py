@@ -1,30 +1,27 @@
-from datetime import datetime
-
-from pydantic import HttpUrl, PostgresDsn, field_validator
+from pydantic import AmqpDsn, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import make_url
 
-from tg_chat_parser.types import LimitedInt
+from chat_parser.types import LimitedInt
 
 
 class Settings(BaseSettings):
     # Service
-    DEBUG: bool
-    CHANNEL_URL: HttpUrl
-    DATE_OFFSET: datetime
-    MESSAGE_OFFSET: int
-    MESSAGE_LIMIT: int = 1
-    MESSAGE_REQUEST_LIMIT: LimitedInt = (
-        200 if MESSAGE_LIMIT > 200 else MESSAGE_LIMIT
-    )
+    APP_NAME: str = "Chat Parser"
+    DEBUG: bool = False
+    MESSAGE_REQUEST_LIMIT: LimitedInt = 200
     # Telegram
     TG_SESSION_NAME: str = "Crawler"
     TG_API_ID: int
     TG_API_HASH: str
+    TG_PHONE_NUMBER: str
+    TG_PASSWORD: str
     # Postgres
     PG_DSN: PostgresDsn
     PG_POOL_SIZE: int = 5
     PG_MAX_POOL_SIZE: int = 10
+    # Rabbit
+    RABBIT_DSN: AmqpDsn
 
     model_config = SettingsConfigDict(
         case_sensitive=True,
