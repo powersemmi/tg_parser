@@ -1,44 +1,76 @@
-FROM python:3.11-slim as builder
+# ──────────── STAGE 1: builder ────────────
+FROM python:3.13-slim AS builder
 LABEL authors="powersemmi@gmail.com"
 
-ENV PIP_NO_CACHE_DIR=OFF \
+# Отключаем кеш pip и устанавливаем нужные инструменты
+ENV PIP_NO_CACHE_DIR=off \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PYTHONPATH=/opt/app \
-    PDM_VERSION=2.13.* \
-    PIP_VERSION=23.3.*
+    PDM_VERSION=2.24.2 \
+    PIP_VERSION=25.1.1 \
+    SETUPTOOLS_VERSION=80.9.0 \
+    WHEEL_VERSION=0.45.1 \
+    PATH="/opt/app/.local/bin:$PATH" \
+    PYTHONUSERBASE=/opt/app/.local
 
 WORKDIR /opt/app
 
-RUN pip install --no-cache-dir "pdm==$PDM_VERSION" "pip==$PIP_VERSION" && \
-    pdm config venv.in_project false && \
-    pdm config check_update false && \
-    pdm config python.use_venv false
+# Устанавливаем pip, setuptools, wheel, затем pdm и uv
+RUN pip install --upgrade \
+        "pip==$PIP_VERSION" \
+        "setuptools==$SETUPTOOLS_VERSION" \
+        "wheel==$WHEEL_VERSION" && \
+    pip install --no-cache-dir \
+        "pdm==$PDM_VERSION"
 
-COPY pyproject.toml pdm.lock README.md /opt/app/
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Копируем метаданные проекта
+COPY pyproject.toml pdm.lock /opt/app/
+
+# Создаём виртуальное окружение вручную и подготавливаем его для сборки
+RUN python -m venv .venv \
+    && . .venv/bin/activate \
+    && pip install --upgrade \
+        "pip==$PIP_VERSION" \
+        "setuptools==$SETUPTOOLS_VERSION" \
+        "wheel==$WHEEL_VERSION"
+
+# Настраиваем PDM на использование uv как резолвера/установщика
+RUN pdm config venv.location ".venv" \
+    && pdm config use_uv true
 
 # Setup prod dependency
-RUN mkdir __pypackages__ && pdm install -v --prod --no-lock --no-editable
+RUN pdm install -v --prod --frozen-lockfile --no-editable
 
-FROM builder as tester
-
-ENV PYTHONPATH=/opt/app/__pypackages__/3.11/lib
-ENV PATH=$PATH:/opt/app/__pypackages__/3.11/bin
+# ──────────── STAGE 2: tester ────────────
+FROM builder AS tester
 
 # Setup dev dependency
-RUN pdm install --dev --no-lock --no-editable
+RUN pdm install --dev --frozen-lockfile --no-editable
 
-CMD ["python"]
+# По умолчанию запускаем REPL для тестирования
+ENTRYPOINT ["pdm", "run", "python"]
 
-FROM python:3.11-slim as runner
 
-ENV PYTHONPATH=/opt/app/pkgs \
+# ──────────── STAGE 3: runner ────────────
+FROM python:3.13-slim AS runner
+LABEL maintainer="powersemmi@gmail.com"
+
+ENV TZ=Europe/Chisinau \
     PYTHONFAULTHANDLER=1 \
-    PYTHONBUFFERED=1
-
-COPY --from=builder /opt/app/__pypackages__/3.11/lib /opt/app/pkgs
+    PYTHONBUFFERED=1 \
+    # Добавляем .venv в PATH, чтобы сразу видеть установленные пакеты
+    PATH=/opt/app/.venv/bin:$PATH
 
 WORKDIR /opt/app
-COPY src/chat_parser/migrations/alembic.ini alembic.ini
-COPY src/chat_parser tg_chat_parser
 
-ENTRYPOINT ["python", "-m", "faststream", "run", "chat_parser.app:app"]
+# Копируем код приложения
+
+COPY src/chat_parser/migrations/alembic.ini alembic.ini
+COPY src/chat_parser chat_parser
+COPY pyproject.toml .
+
+# Копируем виртуальное окружение из билдера
+COPY --from=builder /opt/app/.venv /opt/app/.venv
+
+ENTRYPOINT ["python", "-m", "faststream", "run", "chat_parser.app:app", "--host", "0.0.0.0", "--port", "8080"]

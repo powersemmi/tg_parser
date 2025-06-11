@@ -1,65 +1,144 @@
-version: "3.10"
-
-networks:
-  shared: { }
-
 services:
-  api:
-    restart: no
-    image: tg_chat_parser:latest
+  postgres:
+    image: postgres:17.5-alpine
+    container_name: pg_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: devdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U devuser -d devdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  clickhouse:
+    image: yandex/clickhouse-server:21.12.4.1-alpine
+    container_name: ch_dev
+    restart: unless-stopped
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - backend
+    depends_on:
+      nats:
+        condition: service_healthy
+    # При необходимости можно примонтировать собственные конфиги для NATS-Engine:
+    # volumes:
+    #   - ./clickhouse/config:/etc/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8123/ping | grep -q 'Ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "8123:8123"  # HTTP
+      - "9009:9000"  # Native TCP
+
+  nats:
+    image: nats:2.11.4-alpine
+    command: -m 8222
+    container_name: nats_dev
+    restart: unless-stopped
+    ports:
+      - "4222:4222"
+      - "8222:8222"  # monitoring
+    networks:
+      - backend
+    healthcheck:
+      test: wget http://localhost:8222/healthz -q -S -O -
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  nats_ui:
+    image: ghcr.io/nats-nui/nui:latest
+    container_name: nats_ui
+    restart: unless-stopped
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_SERVER=http://nats:8222
+    ports:
+      - "31311:31311"  # веб-интерфейс NATS-UI
+    healthcheck:
+      test: curl -f http://localhost:8282
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio_dev
+    command: server /data
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"  # консоль управления
+    networks:
+      - backend
+    healthcheck:
+      test: curl -f http://localhost:9000/minio/health/ready
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    deploy:
+      replicas: 1
     build:
       context: .
       dockerfile: Dockerfile
-      target: runner
+    container_name: my_app_dev
+    restart: unless-stopped
+    environment:
+      DEBUG: True
+      # строки подключения
+      PG_DSN: postgresql+asyncpg://devuser:devpass@postgres:5432/devdb
+      CLICKHOUSE_URL: http://clickhouse:8123
+      NATS_DSN: '["nats://nats:4222"]'
+      S3_ENDPOINT: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      S3_BUCKET: dev-bucket
+    networks:
+      - backend
     depends_on:
       postgres:
         condition: service_healthy
-      rabbit:
+      clickhouse:
         condition: service_healthy
-    networks: [ shared ]
-    env_file:
-      - .env
-    environment:
-      - PG_DSN=postgresql+asyncpg://postgres:postgres@postgres:5432/app
-      - RABBIT_DSN=amqp://rabbit:5672
-    secrets:
-      - TG_API_ID
-      - TG_API_HASH
-    entrypoint: bash -c "python -m alembic upgrade head && python -m chat_parser"
-  postgres:
-    image: postgres:15-alpine
-    restart: always
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d app" ]
-      interval: 2s
-      timeout: 1s
-      retries: 5
-    environment:
-      POSTGRES_DB: app
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    networks: [ shared ]
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     ports:
-      - "52326:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-  rabbit:
-    image: rabbitmq:3.13-management
-    networks: [ shared ]
-    healthcheck:
-      test: rabbitmq-diagnostics -q ping
-      interval: 2s
-      timeout: 1s
-      retries: 5
-    ports:
-      - "15672:15672"
-      - "56722:5672"
-
-secrets:
-   TG_API_ID:
-     file: .secrets/TG_API_ID
-   TG_API_HASH:
-     file: .secrets/TG_API_HASH
+      - "8080:8000"  # экспортируйте порт вашего приложения
+#    volumes:
+#      - .:/usr/src/app  # live‑reload, если у вас предусмотрен
+#    working_dir: /usr/src/app
 
 volumes:
-  postgres-data:
+  pgdata:
+  clickhouse_data:
+  minio_data:
+
+networks:
+  backend:
+    driver: bridge

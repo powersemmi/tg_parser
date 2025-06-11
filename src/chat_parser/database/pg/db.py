@@ -38,7 +38,6 @@ engine = create_async_engine(
     hide_parameters=not settings.DEBUG,
     pool_size=settings.PG_POOL_SIZE,
     max_overflow=settings.PG_MAX_POOL_SIZE,
-    isolation_level="SERIALIZABLE",
     pool_pre_ping=True,
     pool_recycle=3600,
     json_deserializer=orjson.dumps,
@@ -53,7 +52,7 @@ async_session = async_sessionmaker(
 logger = logging.getLogger(__name__)
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
+async def get_session() -> AsyncGenerator[AsyncSession]:
     session = async_session()
     try:
         yield session

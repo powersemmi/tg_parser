@@ -1,22 +1,23 @@
-import asyncio
 import hashlib
 import logging
 from datetime import datetime
 
+from clickhouse_connect.driver import AsyncClient
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from telethon import TelegramClient
 from telethon.tl.types import Message
 
-from chat_parser.database.shemas.message import get_channel_table
+from chat_parser.database.pg.shemas import get_channel_table
+from chat_parser.database.tg import TelethonClientManager
 from chat_parser.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
-async def parse(
-    client: TelegramClient,
+async def crawl_telegram_messages(
     session: AsyncSession,
+    client: AsyncClient,
+    tcm: TelethonClientManager,
     channel_url: str,
     message_limit: int,
     offset_msg_id: int | None = None,
@@ -26,7 +27,8 @@ async def parse(
     search: str | None = None,
     reverse: bool = True,
 ) -> None:
-    channel = await client.get_entity(channel_url)
+    async with tcm.get_client() as tg_client:
+        channel = await tg_client.get_entity(channel_url)
     table = await get_channel_table(
         session=session,
         schema=settings.PG_DSN.path[1:]
@@ -34,7 +36,7 @@ async def parse(
         else "app",
         name=hashlib.sha256(string=channel_url.encode()).hexdigest()[:-1],
     )
-    res: list[Message] = await client.get_messages(
+    res: list[Message] = await tg_client.get_messages(
         channel,
         limit=message_limit,
         # offset_date=offset_date,

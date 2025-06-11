@@ -4,8 +4,8 @@ from sqlalchemy import BigInteger, Column, Table, func
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chat_parser.database.db import engine
-from chat_parser.database.queries.tables import check_exists
+from chat_parser.database.pg.db import engine
+from chat_parser.database.pg.queries.tables import check_exists
 
 from .base import Base, metadata
 

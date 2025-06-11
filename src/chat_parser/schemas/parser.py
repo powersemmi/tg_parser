@@ -3,7 +3,7 @@ from typing import Annotated
 from pydantic import AwareDatetime, BaseModel, Field, HttpUrl
 
 
-class ParseMessage(BaseModel):
+class ParseMessageBody(BaseModel):
     channel_url: Annotated[
         HttpUrl,
         Field(..., description="Ссылка на сообщество/пользователя/чат"),

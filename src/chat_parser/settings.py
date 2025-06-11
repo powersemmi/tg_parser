@@ -1,39 +1,44 @@
-from pydantic import AmqpDsn, PostgresDsn, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy import make_url
+from typing import Annotated
 
-from chat_parser.types import LimitedInt
+from pydantic import (
+    AfterValidator,
+    AnyUrl,
+    HttpUrl,
+    NatsDsn,
+    PostgresDsn,
+    SecretStr,
+    conlist,
+)
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     # Service
     APP_NAME: str = "Chat Parser"
     DEBUG: bool = False
-    MESSAGE_REQUEST_LIMIT: LimitedInt = 200
     # Telegram
     TG_SESSION_NAME: str = "Crawler"
-    TG_API_ID: int
-    TG_API_HASH: str
-    TG_PHONE_NUMBER: str
-    TG_PASSWORD: str
     # Postgres
     PG_DSN: PostgresDsn
     PG_POOL_SIZE: int = 5
     PG_MAX_POOL_SIZE: int = 10
-    # Rabbit
-    RABBIT_DSN: AmqpDsn
+    # ClickHouse
+    CLICKHOUSE_URL: AnyUrl
+    CH_POOL_SIZE: int = 10
+    # Nats
+    NATS_DSN: conlist(NatsDsn, min_length=1)  # type: ignore[valid-type]
+    # AWS
+    S3_ENDPOINT: HttpUrl
+    AWS_ACCESS_KEY_ID: SecretStr
+    AWS_SECRET_ACCESS_KEY: SecretStr
+    AWS_REGION: str
+    S3_BUCKET: str
 
     model_config = SettingsConfigDict(
         case_sensitive=True,
-        secrets_dir="/run/secrets",
         env_file=".env",
         env_file_encoding="utf-8",
     )
-
-    @classmethod
-    @field_validator("PG_DSN", check_fields=False)
-    def set_driver_name(cls, val: str) -> str:
-        return str(make_url(val).set(drivername="postgresql+asyncpg"))
 
 
 settings = Settings()
