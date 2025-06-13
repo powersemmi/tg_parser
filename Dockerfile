@@ -66,8 +66,8 @@ WORKDIR /opt/app
 
 # Копируем код приложения
 
-COPY src/chat_parser/migrations/alembic.ini alembic.ini
-COPY src/chat_parser chat_parser
+COPY src/crawler/migrations/alembic.ini alembic.ini
+COPY src/crawler chat_parser
 COPY pyproject.toml .
 
 # Копируем виртуальное окружение из билдера
