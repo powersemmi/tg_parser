@@ -25,21 +25,6 @@ RecentDateTime = Annotated[
 ]
 
 
-class ScheduleParseMessageSchema(BaseModel):
-    channel_id: Annotated[
-        int,
-        Field(..., description="id сообщества/пользователя/чат"),
-    ]
-    from_message_id: Annotated[
-        int,
-        Field(
-            None,
-            gt=0,
-            description="С какого id сообщения собирать",
-        ),
-    ]
-
-
 class NewChannelParseMessageBody(BaseModel):
     channel_url: Annotated[
         HttpUrl,
@@ -47,5 +32,5 @@ class NewChannelParseMessageBody(BaseModel):
     ]
     datetime_offset: Annotated[
         RecentDateTime,
-        Field(None, description="С какой datetime собирать"),
+        Field(..., description="С какой datetime собирать"),
     ]

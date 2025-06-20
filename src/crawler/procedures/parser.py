@@ -1,50 +1,68 @@
-import hashlib
+import asyncio
 import logging
-from datetime import datetime
+from collections.abc import AsyncGenerator, Callable
 
-from clickhouse_connect.driver import AsyncClient
-from sqlalchemy import insert
-from sqlalchemy.ext.asyncio import AsyncSession
-from telethon.tl.types import Message
-
-from crawler.database.pg.shemas import get_channel_table
-from crawler.database.tg import TelethonClientManager
-from crawler.settings import settings
+import asyncstdlib
+from telethon.tl.custom.message import Message
 
 logger = logging.getLogger(__name__)
 
 
-async def crawl_telegram_messages(
-    session: AsyncSession,
-    client: AsyncClient,
-    tcm: TelethonClientManager,
-    channel_url: str,
-    message_limit: int,
-    offset_msg_id: int | None = None,
-    offset_date: datetime | None = None,
-    from_user: str | None = None,
-    filter: None = None,
-    search: str | None = None,
-    reverse: bool = True,
+async def _iter_messages_locked(entity: int) -> AsyncGenerator[Message, None]:
+    async with TGSessionManager.client_session() as client:
+        async for message in client.iter_messages(
+            entity=entity, reverse=False
+        ):
+            yield message
+
+
+async def try_find_channel_id(): ...
+
+
+async def crawl_messages(
+    channel: FashionChannel,
+    s3_client: BaseClient,
+    bucket: str,
+    condition: Callable[[Message], bool],
 ) -> None:
-    async with tcm.get_client() as tg_client:
-        channel = await tg_client.get_entity(channel_url)
-    table = await get_channel_table(
-        session=session,
-        schema=settings.PG_DSN.path[1:]
-        if settings.PG_DSN.path is not None
-        else "app",
-        name=hashlib.sha256(string=channel_url.encode()).hexdigest()[:-1],
-    )
-    res: list[Message] = await tg_client.get_messages(
-        channel,
-        limit=message_limit,
-        # offset_date=offset_date,
-        # offset_id=offset_msg_id,
-        reverse=reverse,
-    )
-    messages_to_create = [
-        {"raw": i.to_dict(), "date": i.to_dict()["date"]} for i in res
-    ]
-    await session.execute(insert(table), messages_to_create)
-    await session.commit()
+    """
+    Функция ходит с последнего сообщения в чате до тех пор, пока
+    не удовлетворит condition и сохраняет текст сообщений в базу
+
+    :param bucket: Бакет для s3
+    :param s3_client: Клиент s3
+    :param entity: Объект идентифицирующий чат в Telegram.
+    :param channel: Объект с информацией о канале.
+    :param condition: Функция, которая определяет когда сбору прекратиться,
+                      в случае если функция всегда будет
+                      возвращать False, сбор будет происходить до тех пор,
+                      пока функция не дойдёт до начала канала
+    """
+    counter = 0
+    tasks = []
+    channel_id = int(f"-100{channel.id}")
+    async with TGSessionManager.client_session() as client:
+        try:
+            entity = await client.get_input_entity(channel_id)
+        except ValueError:
+            entity = await client.get_entity(channel.url)
+    async for counter, message in asyncstdlib.enumerate(
+        _iter_messages_locked(entity=entity)
+    ):
+        try:
+            if condition(message):
+                break
+            tasks.append(
+                asyncio.create_task(
+                    _handle_message_result(
+                        channel=channel,
+                        s3_client=s3_client,
+                        bucket=bucket,
+                        message=message,
+                    )
+                )
+            )
+        except Exception as e:
+            logger.info(e, exc_info=True)
+    await asyncio.gather(*tasks)
+    logger.info("Processed %s messages", counter)

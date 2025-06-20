@@ -1,12 +1,14 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from typing import Any, cast
+from dataclasses import asdict, dataclass
+from typing import Any, Self, TypedDict, Unpack, cast
 
+from faststream.nats import NatsBroker
 from pydantic import BaseModel, Field, ValidationError
 from pydantic.networks import AnyUrl
 from python_socks import ProxyType
+from sqlalchemy.ext.asyncio import AsyncEngine
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from tenacity import (
@@ -54,6 +56,13 @@ class ProxySettings(BaseModel):
         return proxy_type, host, port, rdns, username, password
 
 
+class ClientConfigType(TypedDict):
+    session: str
+    api_id: int
+    api_hash: str
+    proxy: str
+
+
 @dataclass
 class ClientConfig:
     session: str
@@ -62,32 +71,19 @@ class ClientConfig:
     proxy: str | None = None
 
 
-class TelethonClientManager:
-    __slots__ = ("_client", "_config", "_lock")
-
+class ConnectManager:
     def __init__(
-        self,
-        session: str,
-        api_id: int,
-        api_hash: str,
-        proxy: str | None = None,
-    ):
-        """
-        Инициализация TelethonClientManager.
-
-        :param session: StringSession или путь к файлу сессии.
-        :param api_id: Telegram API ID.
-        :param api_hash: Telegram API Hash.
-        :param proxy: URL прокси, если нужен.
-        """
-        self._config = ClientConfig(
-            session=session, api_id=api_id, api_hash=api_hash, proxy=proxy
-        )
+        self, engine: AsyncEngine, **kwargs: ClientConfigType
+    ) -> None:
         self._lock = asyncio.Lock()
-        self._client = self._create_client()
+        self._client = None
+        self._config = ClientConfig(**kwargs)
+        self.db = engine
 
     def _create_client(self) -> TelegramClient:
-        """Инстанцирует новый TelegramClient по текущей конфигурации."""
+        """
+        Инстанцирует новый TelegramClient.
+        """
         session = StringSession(self._config.session)
         proxy_args = None
         if self._config.proxy:
@@ -130,13 +126,12 @@ class TelethonClientManager:
             await self._client.disconnect()
             logger.info("Disconnected.")
 
-    async def __aenter__(self) -> "TelethonClientManager":
+    async def __aenter__(self) -> Self:
         await self.open()
         return self
 
-    async def __aexit__(self, *args: Any) -> bool | None:
+    async def __aexit__(self, *args: Any) -> None:
         await self.close()
-        return False  # не подавлять исключения
 
     @asynccontextmanager
     async def get_client(self) -> TelegramClient:
@@ -148,19 +143,12 @@ class TelethonClientManager:
                 # client — ваш TelegramClient
         """
         async with self._lock:
-            await self.open()
-            try:
-                yield self._client
-            finally:
-                # не закрываем клиент, чтобы переиспользовать соединение
-                pass
+            if self._client is None:
+                raise ValueError("TgClient is not open")
+            yield self._client
 
     async def update_credentials(
-        self,
-        session: str | None = None,
-        api_id: int | None = None,
-        api_hash: str | None = None,
-        proxy: str | None = None,
+        self, **kwargs: Unpack[ClientConfigType]
     ) -> None:
         """
         Atomically update client credentials & recreate client instance.
@@ -168,14 +156,38 @@ class TelethonClientManager:
         """
         async with self._lock:
             await self.close()
-            if session is not None:
-                self._config.session = session
-            if api_id is not None:
-                self._config.api_id = api_id
-            if api_hash is not None:
-                self._config.api_hash = api_hash
-            if proxy is not None:
-                self._config.proxy = proxy
-
+            if self._config is None:
+                self._config = ...
+            else:
+                self._config = ClientConfig(**{
+                    **asdict(self._config),
+                    **kwargs,
+                })
             self._client = self._create_client()
             logger.info("Credentials updated successfully.")
+
+
+class SessionManager:
+    def __init__(self, broker: NatsBroker, key_prefix: str) -> None:
+        self.cm: ConnectManager | None
+        self.broker = broker
+        self.key_prefix = key_prefix
+        self._session_keys: list[int] | None = None
+
+    async def open(self) -> None: ...
+
+    async def exit(self) -> None: ...
+
+    async def __aenter__(self) -> Self: ...
+
+    async def __aexit__(self, *args: Any) -> None: ...
+
+    @asynccontextmanager
+    async def _lock(self): ...
+
+    @asynccontextmanager
+    async def session(self) -> ConnectManager:
+        async with self._lock():
+            async with ConnectManager() as cm:
+                self.cm = cm
+                yield self.cm

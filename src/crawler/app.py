@@ -4,11 +4,9 @@ from contextlib import asynccontextmanager
 
 from faststream import ContextRepo, FastStream
 from logging518 import config
-from sqlalchemy import literal, select
 
 from crawler.brokers import broker
-from crawler.database.pg.db import engine
-from crawler.database.tg import TelethonClientManager
+from crawler.database.tg import SessionManager
 from crawler.routes import new_channel, schedule
 from crawler.settings import settings
 
@@ -17,15 +15,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(context: ContextRepo) -> AsyncGenerator[None]:
-    async with engine.connect() as conn:
-        stmt = select(literal(1), literal(2), literal(3))
-        res = await conn.execute(stmt)
-        api_hash, api_id, session = tuple(res.one())
-        async with TelethonClientManager(
-            api_hash=api_hash, api_id=api_id, session=session
-        ) as tcm:
-            context.set_global("tcm", tcm)
-            yield
+    context.set_global("tcm", SessionManager())
+    yield
 
 
 def create_app() -> FastStream:
