@@ -1,12 +1,7 @@
-from typing import Annotated
-
 from pydantic import (
-    AfterValidator,
     AnyUrl,
-    HttpUrl,
     NatsDsn,
     PostgresDsn,
-    SecretStr,
     conlist,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
