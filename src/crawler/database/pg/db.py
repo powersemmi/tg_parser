@@ -53,11 +53,9 @@ logger = logging.getLogger(__name__)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession]:
-    session = async_session()
-    try:
-        yield session
-    except Exception:
-        await session.rollback()
-        raise
-    finally:
-        await session.aclose()
+    async with async_session() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise

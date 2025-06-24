@@ -9,8 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from crawler.brokers import parser_stream
 from crawler.database.pg.db import get_session
-from crawler.database.tg import SessionManager
-from crawler.procedures.parser import crawl_telegram_messages
 from crawler.schemas.schedule import ScheduleParseMessageSchema
 from crawler.settings import settings
 
@@ -35,15 +33,8 @@ async def handle_schedule(
     body: ScheduleParseMessageSchema,
     msg: NatsMessage,
     session: Annotated[AsyncSession, Depends(get_session, use_cache=False)],
-    tcm: Annotated[SessionManager, Depends(Context())],
 ) -> None:
     try:
-        await crawl_telegram_messages(
-            session=session,
-            tcm=tcm,
-            channel_id=body.channel_id,
-            offset_msg_id=body.from_message_id,
-        )
         await msg.ack()
     except Exception as e:
         logger.error("Found exception! %s", e, exc_info=True)

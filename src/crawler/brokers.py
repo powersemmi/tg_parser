@@ -11,4 +11,4 @@ broker = NatsBroker(
     logger=logger,
     graceful_timeout=30,
 )
-parser_stream = JStream(name="CHAT_PARSER", subjects=["crawler.tasks.*"])
+parser_stream = JStream(name="CHAT_PARSER")
