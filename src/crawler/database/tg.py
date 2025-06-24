@@ -1,14 +1,16 @@
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from typing import Any, Self, TypedDict, Unpack, cast
+from typing import Annotated, Any, Self, TypedDict, Unpack, cast
 
-from faststream.nats import NatsBroker
+from fast_depends import Depends
+from faststream import Context
 from pydantic import BaseModel, Field, ValidationError
 from pydantic.networks import AnyUrl
 from python_socks import ProxyType
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from tenacity import (
@@ -17,6 +19,10 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+
+from common.utils.nats.resource_manager import ResourceLockManager
+from crawler.database.pg.db import get_session
+from crawler.database.pg.shemas.telegram.sessions import TelegramSession
 
 logger = logging.getLogger(__name__)
 
@@ -72,13 +78,10 @@ class ClientConfig:
 
 
 class ConnectManager:
-    def __init__(
-        self, engine: AsyncEngine, **kwargs: ClientConfigType
-    ) -> None:
+    def __init__(self, **kwargs: Unpack[ClientConfigType]) -> None:
         self._lock = asyncio.Lock()
-        self._client = None
-        self._config = ClientConfig(**kwargs)
-        self.db = engine
+        self._config: ClientConfig = ClientConfig(**kwargs)
+        self._client: TelegramClient = self._create_client()
 
     def _create_client(self) -> TelegramClient:
         """
@@ -156,38 +159,28 @@ class ConnectManager:
         """
         async with self._lock:
             await self.close()
-            if self._config is None:
-                self._config = ...
-            else:
-                self._config = ClientConfig(**{
-                    **asdict(self._config),
-                    **kwargs,
-                })
+            self._config = ClientConfig(**{
+                **asdict(self._config),
+                **kwargs,
+            })
             self._client = self._create_client()
             logger.info("Credentials updated successfully.")
 
 
-class SessionManager:
-    def __init__(self, broker: NatsBroker, key_prefix: str) -> None:
-        self.cm: ConnectManager | None
-        self.broker = broker
-        self.key_prefix = key_prefix
-        self._session_keys: list[int] | None = None
-
-    async def open(self) -> None: ...
-
-    async def exit(self) -> None: ...
-
-    async def __aenter__(self) -> Self: ...
-
-    async def __aexit__(self, *args: Any) -> None: ...
-
-    @asynccontextmanager
-    async def _lock(self): ...
-
-    @asynccontextmanager
-    async def session(self) -> ConnectManager:
-        async with self._lock():
-            async with ConnectManager() as cm:
-                self.cm = cm
-                yield self.cm
+async def get_tg_client(
+    session: Annotated[AsyncSession, Depends(get_session, use_cache=False)],
+    rlm: Annotated[ResourceLockManager, Depends(Context())],
+) -> AsyncIterator[ConnectManager]:
+    async with rlm.session() as tg_session_id:
+        tg_session = await TelegramSession.get(
+            session=session, id=tg_session_id
+        )
+        if tg_session:
+            async with ConnectManager(
+                session=tg_session.session,
+                api_id=int(tg_session.api_id),
+                api_hash=tg_session.api_hash,
+                proxy=tg_session.proxy,
+            ) as cm:
+                yield cm
+        raise ValueError(f"{tg_session_id=} not in sessions table")

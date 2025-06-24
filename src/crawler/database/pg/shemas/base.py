@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, ClassVar, Self
 
-from sqlalchemy import BigInteger, func, update
+from sqlalchemy import BigInteger, Sequence, func, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, registry
@@ -41,9 +41,12 @@ class Base(DeclarativeBase):
 
 
 class BaseSchema(Base):
+    __tablename__ = "base"
     __abstract__ = True
 
-    id = mapped_column(BigInteger, primary_key=True)
+    id = mapped_column(
+        BigInteger, Sequence(f"{__tablename__}_id_seq"), primary_key=True
+    )
     created_at: Mapped[datetime] = mapped_column(insert_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),

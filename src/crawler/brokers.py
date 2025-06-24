@@ -1,6 +1,5 @@
 import logging
 
-from faststream.nats import JStream
 from faststream.nats.broker import NatsBroker
 
 from crawler.settings import settings
@@ -11,4 +10,3 @@ broker = NatsBroker(
     logger=logger,
     graceful_timeout=30,
 )
-parser_stream = JStream(name="CHAT_PARSER", subjects=["crawler.tasks.*"])
