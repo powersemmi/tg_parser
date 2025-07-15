@@ -2,6 +2,7 @@ import logging
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from logging import Logger
 
 from faststream import ContextRepo, FastStream
 from logging518 import config
@@ -9,16 +10,31 @@ from logging518 import config
 from common.utils.nats.resource_manager import ResourceLockManager
 from crawler.brokers import broker
 from crawler.database.pg.db import async_session
-from crawler.database.pg.shemas.telegram.sessions import TelegramSession
+from crawler.database.pg.schemas.telegram.sessions import TelegramSession
 from crawler.routes import new_channel, schedule
 from crawler.settings import settings
 
+"""Main application module for the crawler service.
+
+Contains application initialization and configuration.
+"""
+
 sys.excepthook = sys.__excepthook__
-logger = logging.getLogger(__name__)
+logger: Logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(context: ContextRepo) -> AsyncGenerator[None]:
+    """Application lifecycle manager.
+
+    Sets up resources and manages their lifecycle during application runtime.
+
+    Args:
+        context: Repository for sharing context across the application
+
+    Yields:
+        Control back to the application server
+    """
     async with async_session() as session:
         resource_ids = await TelegramSession.get_all_id(session=session)
     async with broker:
@@ -38,6 +54,11 @@ async def lifespan(context: ContextRepo) -> AsyncGenerator[None]:
 
 
 def create_app() -> FastStream:
+    """Create and configure the FastStream application.
+
+    Returns:
+        Configured FastStream application instance
+    """
     application = FastStream(
         broker=broker,
         title=settings.APP_NAME.title().replace("-", " "),
@@ -53,4 +74,4 @@ def create_app() -> FastStream:
 
 
 config.fileConfig("pyproject.toml")
-app = create_app()
+app: FastStream = create_app()

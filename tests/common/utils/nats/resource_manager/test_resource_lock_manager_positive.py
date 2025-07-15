@@ -9,7 +9,7 @@ from common.utils.nats.resource_manager import (
 
 async def test_lock_success(broker_mock: tuple[Any, Any]) -> None:
     broker, kv = broker_mock
-    kv.create.return_value = 42
+    kv.create_entity.return_value = 42
 
     manager = ResourceLockManager(
         broker=broker,
@@ -25,7 +25,7 @@ async def test_lock_success(broker_mock: tuple[Any, Any]) -> None:
     state = manager._states[1]
     assert state.locked
     assert state.version == 42
-    kv.create.assert_awaited_once_with("prefix.1", b"inst")
+    kv.create_entity.assert_awaited_once_with("prefix.1", b"inst")
 
 
 async def test_unlock_and_cleanup(broker_mock: tuple[Any, Any]) -> None:
@@ -94,7 +94,7 @@ async def test_context_manager_enter_exit(
     broker_mock: tuple[Any, Any],
 ) -> None:
     broker, kv = broker_mock
-    kv.create = AsyncMock(side_effect=[100, 200])
+    kv.create_entity = AsyncMock(side_effect=[100, 200])
     kv.delete = AsyncMock()
 
     manager = ResourceLockManager(

@@ -1,7 +1,7 @@
 from sqlalchemy import BigInteger, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from crawler.database.pg.shemas.base import BaseSchema
+from crawler.database.pg.schemas.base import BaseSchema
 
 
 class TelegramSessionEntityMap(BaseSchema):

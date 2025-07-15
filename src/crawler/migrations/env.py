@@ -7,7 +7,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from crawler.database.pg.shemas import metadata
+from crawler.database.pg.schemas import metadata
 from crawler.settings import settings
 
 log_conf.fileConfig("pyproject.toml")

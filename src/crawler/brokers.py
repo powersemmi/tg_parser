@@ -1,11 +1,19 @@
+"""Broker module that configures NATS broker for the crawler application.
+
+Contains the initialization of the NATS broker with configuration settings.
+The broker handles message publishing and subscription for all
+application routes.
+"""
+
 import logging
+from logging import Logger
 
 from faststream.nats.broker import NatsBroker
 
 from crawler.settings import settings
 
-logger = logging.getLogger(__name__)
-broker = NatsBroker(
+logger: Logger = logging.getLogger(__name__)
+broker: NatsBroker = NatsBroker(
     servers=[dsn.unicode_string() for dsn in settings.NATS_DSN],
     logger=logger,
     graceful_timeout=30,

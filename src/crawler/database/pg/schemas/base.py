@@ -14,9 +14,7 @@ class Base(DeclarativeBase):
     type_annotation_map: ClassVar = {dict[str, Any]: JSONB}
 
     @classmethod
-    async def _create(
-        cls, session: AsyncSession, **kwargs: dict[str, Any]
-    ) -> Self:
+    async def _create(cls, session: AsyncSession, **kwargs: Any) -> Self:
         obj = cls(**kwargs)
         session.add(obj)
         return obj

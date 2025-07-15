@@ -1,8 +1,14 @@
+"""Telegram client connection module.
+
+Provides utilities for connecting to the Telegram API with session management.
+"""
+
 import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
+from logging import Logger
 from typing import Annotated, Any, Self, TypedDict, Unpack, cast
 
 from fast_depends import Depends
@@ -22,33 +28,44 @@ from tenacity import (
 
 from common.utils.nats.resource_manager import ResourceLockManager
 from crawler.database.pg.db import get_session
-from crawler.database.pg.shemas.telegram.sessions import TelegramSession
+from crawler.database.pg.schemas.telegram.sessions import TelegramSession
 
-logger = logging.getLogger(__name__)
+logger: Logger = logging.getLogger(__name__)
 
 
 class ProxySettings(BaseModel):
-    # Поддерживаем все URL‑прокси-схемы (socks4, socks5, http, https...)
-    url: AnyUrl = Field(
-        ..., description="Proxy URL, e.g. socks5://user:pass@host:port"
-    )
+    """Proxy settings model for Telegram client connections.
+
+    Supports various proxy schemes (socks4, socks5, http, https).
+    """
+
+    url: Annotated[
+        AnyUrl,
+        Field(..., description="Proxy URL, e.g. socks5://user:pass@host:port"),
+    ]
 
     def to_telethon_proxy(
         self,
     ) -> tuple[ProxyType, str, int, bool, str | None, str | None]:
-        """
-        Преобразовать URL в кортеж для Telethon/python-socks:
+        """Convert URL to tuple format for Telethon/python-socks.
 
-            (proxy_type, host, port, rdns, username, password)
+        Transforms the proxy URL into the format expected by Telethon:
+        (proxy_type, host, port, rdns, username, password)
+
+        Returns:
+            Tuple containing proxy configuration parameters
+
+        Raises:
+            ValueError: If proxy scheme is not supported
         """
         scheme = self.url.scheme.lower()
         host = cast(str, self.url.host)
         port = cast(int, self.url.port)
         username = self.url.username or None
         password = self.url.password or None
-        rdns = True  # резолв DNS удалённо по умолчанию
+        rdns = True  # Remote DNS resolution by default
 
-        # Используем match-case из Python 3.13 для выбора ProxyType
+        # Using match-case from Python 3.13 for ProxyType selection
         match scheme:
             case "socks5" | "socks5h":
                 proxy_type = ProxyType.SOCKS5
@@ -63,6 +80,11 @@ class ProxySettings(BaseModel):
 
 
 class ClientConfigType(TypedDict):
+    """Type definition for client configuration parameters.
+
+    Used for type checking when passing configuration parameters.
+    """
+
     session: str
     api_id: int
     api_hash: str
@@ -71,6 +93,11 @@ class ClientConfigType(TypedDict):
 
 @dataclass
 class ClientConfig:
+    """Configuration dataclass for Telegram client.
+
+    Stores all necessary parameters for establishing a Telegram connection.
+    """
+
     session: str
     api_id: int
     api_hash: str
@@ -78,14 +105,29 @@ class ClientConfig:
 
 
 class ConnectManager:
+    """Manager for Telegram client connections.
+
+    Handles connection lifecycle, retries, and exclusive access to the client.
+    """
+
     def __init__(self, **kwargs: Unpack[ClientConfigType]) -> None:
+        """Initialize connection manager with client configuration.
+
+        Args:
+            **kwargs: Client configuration parameters
+        """
         self._lock = asyncio.Lock()
         self._config: ClientConfig = ClientConfig(**kwargs)
         self._client: TelegramClient = self._create_client()
 
     def _create_client(self) -> TelegramClient:
-        """
-        Инстанцирует новый TelegramClient.
+        """Instantiate a new TelegramClient with current configuration.
+
+        Returns:
+            Configured TelegramClient instance
+
+        Raises:
+            ValueError: If proxy URL is invalid
         """
         session = StringSession(self._config.session)
         proxy_args = None
@@ -106,8 +148,8 @@ class ConnectManager:
         )
 
     async def open(self) -> None:
-        """
-        Connect the client, with retries on network errors.
+        """Connect the client with retries on network errors.
+
         Uses tenacity to retry up to 3 times with exponential backoff.
         """
         async for attempt in AsyncRetrying(
@@ -130,20 +172,34 @@ class ConnectManager:
             logger.info("Disconnected.")
 
     async def __aenter__(self) -> Self:
+        """Async context manager entry.
+
+        Returns:
+            Self reference to the manager
+        """
         await self.open()
         return self
 
     async def __aexit__(self, *args: Any) -> None:
+        """Async context manager exit.
+
+        Ensures client is properly disconnected.
+        """
         await self.close()
 
     @asynccontextmanager
-    async def get_client(self) -> TelegramClient:
-        """
-        Async-context for exclusive client access.
+    async def get_client(self) -> AsyncIterator[TelegramClient]:
+        """Async-context for exclusive client access.
 
         Usage:
             async with manager.get_client() as client:
-                # client — ваш TelegramClient
+                # client is your TelegramClient instance
+
+        Yields:
+            Active TelegramClient instance
+
+        Raises:
+            ValueError: If client is not available
         """
         async with self._lock:
             if self._client is None:
@@ -153,9 +209,12 @@ class ConnectManager:
     async def update_credentials(
         self, **kwargs: Unpack[ClientConfigType]
     ) -> None:
-        """
-        Atomically update client credentials & recreate client instance.
-        Блокирует доступ другим корутинам до завершения.
+        """Atomically update client credentials and recreate client instance.
+
+        Blocks access from other coroutines until completion.
+
+        Args:
+            **kwargs: New credential parameters to update
         """
         async with self._lock:
             await self.close()
@@ -171,6 +230,20 @@ async def get_tg_client(
     session: Annotated[AsyncSession, Depends(get_session, use_cache=False)],
     rlm: Annotated[ResourceLockManager, Depends(Context())],
 ) -> AsyncIterator[ConnectManager]:
+    """Get a Telegram client connection manager.
+
+    Retrieves session information from the database and creates a connection.
+
+    Args:
+        session: Database session
+        rlm: Resource lock manager for managing Telegram session access
+
+    Yields:
+        Telegram connection manager
+
+    Raises:
+        ValueError: If the session ID is not found in the database
+    """
     async with rlm.session() as tg_session_id:
         tg_session = await TelegramSession.get(
             session=session, id=tg_session_id
@@ -183,4 +256,7 @@ async def get_tg_client(
                 proxy=tg_session.proxy,
             ) as cm:
                 yield cm
+                return
+
+        # Only reach here if tg_session is None
         raise ValueError(f"{tg_session_id=} not in sessions table")
