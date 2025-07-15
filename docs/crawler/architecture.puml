@@ -1,0 +1,63 @@
+@startuml
+!theme plain
+title Crawler Service Architecture
+
+package "Crawler Service" {
+    component App as "app.py"
+    component Brokers as "brokers.py"
+    component Settings as "settings.py"
+
+    package "Routes" {
+        component RoutesModule as "routes"
+    }
+
+    package "Procedures" {
+        component ProceduresModule as "procedures"
+    }
+
+    package "Database" {
+        component DatabaseModule as "database"
+        package "PG" {
+            component PGModule as "pg"
+        }
+        package "TG" {
+            component TGModule as "tg.py"
+        }
+    }
+
+    package "Schemas" {
+        component SchemasModule as "schemas"
+    }
+}
+
+package "External Services" {
+    database PostgreSQL as "PostgreSQL"
+    cloud NATS as "NATS JetStream"
+    interface TelegramAPI as "Telegram API"
+}
+
+package "Common Utils" {
+    component ResourceManager as "resource_manager.py"
+}
+
+package "Parser Module" {
+    component Parser as "parser.py"
+}
+
+' Связи компонентов
+App --> RoutesModule
+App --> Brokers
+App --> Settings
+RoutesModule --> ProceduresModule
+ProceduresModule --> DatabaseModule
+DatabaseModule --> PGModule
+DatabaseModule --> TGModule
+TGModule --> TelegramAPI
+TGModule --> ResourceManager
+Parser --> TGModule
+ProceduresModule --> Parser
+PGModule --> PostgreSQL
+ResourceManager --> NATS
+Brokers --> NATS
+
+@enduml
