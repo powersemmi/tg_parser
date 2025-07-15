@@ -31,9 +31,18 @@ type ReactionType = (
 
 @dataclass
 class TelegramMessageMetadata:
-    """Metadata for collecting statistics of Telegram channel messages.
+    """Метаданные для сбора статистики сообщений канала Telegram.
 
-    Tracks message IDs, timestamps and count of processed messages.
+    Отслеживает идентификаторы сообщений, временные метки и количество
+    обработанных сообщений. Используется для создания записей о собранных
+    коллекциях в базе данных.
+
+    Атрибуты:
+        from_message_id: ID первого сообщения в коллекции
+        to_message_id: ID последнего сообщения в коллекции
+        from_datetime: Дата/время первого сообщения
+        to_datetime: Дата/время последнего сообщения
+        count: Количество сообщений в коллекции
     """
 
     from_message_id: int | None = None
@@ -43,11 +52,15 @@ class TelegramMessageMetadata:
     count: int = 0
 
     def update_message(self, message_id: int, message_date: datetime) -> None:
-        """Update metadata with information about a new message.
+        """Обновляет метаданные информацией о новом сообщении.
+
+        Если это первое сообщение (from_message_id = None), то обновляет
+        начальные значения. В любом случае обновляет конечные значения и
+        увеличивает счетчик сообщений.
 
         Args:
-            message_id: ID of the processed message
-            message_date: Datetime of the processed message
+            message_id: ID обработанного сообщения
+            message_date: Дата/время обработанного сообщения
         """
         if self.from_message_id is None:
             self.from_message_id = message_id
@@ -60,10 +73,13 @@ class TelegramMessageMetadata:
     def get_stats(
         self,
     ) -> tuple[int | None, int | None, datetime | None, datetime | None, int]:
-        """Get statistics as a tuple.
+        """Получение статистики в виде кортежа.
+
+        Удобный метод для извлечения всех статистических данных в
+        структурированном формате.
 
         Returns:
-            Tuple containing (from_message_id, to_message_id, from_datetime,
+            Кортеж, содержащий (from_message_id, to_message_id, from_datetime,
             to_datetime, count)
         """
         return (
@@ -76,7 +92,15 @@ class TelegramMessageMetadata:
 
 
 class ReactionDict(TypedDict):
-    """Словарь для представления реакции на сообщение."""
+    """Словарь для представления реакции на сообщение.
+
+    Используется для структурированного хранения информации о реакциях
+    пользователей на сообщения в каналах Telegram.
+
+    Атрибуты:
+        emoji: Эмодзи или ID кастомной реакции
+        count: Количество реакций данного типа
+    """
 
     emoji: str  # Эмодзи или ID кастомной реакции
     count: int  # Количество реакций данного типа
@@ -123,7 +147,18 @@ class MessageDict(TypedDict):
 async def _iter_messages_locked(
     connect_manager: ConnectManager, entity: Entity
 ) -> AsyncIterator[Message]:
-    """Iterate over messages for a given entity."""
+    """Итерация по сообщениям для заданной сущности с блокировкой клиента.
+
+    Использует асинхронный контекстный менеджер connect_manager.get_client()
+    для безопасного доступа к клиенту Telegram API и итерации по сообщениям.
+
+    Args:
+        connect_manager: Менеджер соединения с Telegram API
+        entity: Сущность Telegram (канал, чат, пользователь)
+
+    Yields:
+        Сообщения Telegram API (объекты Message)
+    """
     async with connect_manager.get_client() as client:
         async for message in client.iter_messages(
             entity=entity, reverse=False
@@ -269,15 +304,23 @@ def extract_telethon_message_data(
 ) -> MessageDict:
     """Извлекает данные из объекта Message библиотеки Telethon.
 
-    Обрабатывает все поля из telethon.tl.types.Message и преобразует их
-    в формат MessageDict для дальнейшей обработки.
+    Комплексная функция для обработки всех полей из telethon.tl.types.Message
+    и преобразования их в унифицированный формат MessageDict.
+    Извлекает информацию о сообщении, отправителе, реакциях, медиа-контенте
+    и других атрибутах.
+
+    Использует вспомогательные функции для извлечения отдельных компонентов:
+    - _extract_sender_info() для данных отправителя
+    - _extract_reactions() для реакций на сообщение
+    - _extract_message_metadata() для метаданных сообщения
+    - _extract_media_info() для данных о медиа-контенте
 
     Args:
         message: Объект сообщения Telethon
         entity: Сущность Telegram (канал, чат, пользователь)
 
     Returns:
-        Словарь с данными сообщения
+        Структурированный словарь MessageDict с данными сообщения
     """
     # Получаем основные компоненты сообщения из вспомогательных функций
     sender_id, sender_name = _extract_sender_info(message)
@@ -325,15 +368,26 @@ async def collect_messages(
     connect_manager: ConnectManager,
     condition: Callable[[Message], bool],
 ) -> AsyncIterator[tuple[MessageDict | None, TelegramMessageMetadata | None]]:
-    """Collect messages from Telegram entity using connected client.
+    """
+    Сбор сообщений из сущности Telegram с использованием подключенного клиента.
+
+    Основная функция для сбора сообщений из каналов, чатов или
+    пользователей Telegram.
+    Итерирует по сообщениям, применяет условие фильтрации, обрабатывает ошибки
+    ограничения скорости (FloodWaitError) и собирает метаданные коллекции.
 
     Args:
-        entity: Entity to collect messages from
-        connect_manager: Connected Telegram client
-        condition: Condition to filter messages by (e.g. by sender)
+        entity: Сущность Telegram для сбора сообщений
+        connect_manager: Подключенный клиент Telegram
+        condition: Условие для фильтрации сообщений (например, по отправителю)
+                   Когда условие возвращает True, сбор прекращается
 
-    Returns:
-        Tuple of (collected_messages, metadata)
+    Yields:
+        Кортеж из (собранное_сообщение, метаданные), где:
+        - собранное_сообщение: структура MessageDict с данными сообщения
+          или None в случае ошибки
+        - метаданные: объект TelegramMessageMetadata с метаданными коллекции
+          или None в случае ошибки
     """
     metadata: TelegramMessageMetadata | None = None
     # Обрабатываем полученные сообщения

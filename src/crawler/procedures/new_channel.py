@@ -25,7 +25,14 @@ logger = logging.getLogger(__name__)
 
 
 class SessionResult(NamedTuple):
-    """Result of session preparation."""
+    """Результат подготовки сессии для работы с каналом Telegram.
+
+    Атрибуты:
+        db_entity: Сущность канала в базе данных
+        connect_manager: Менеджер соединения с Telegram API
+        db_session: Сессия Telegram из базы данных
+        tg_entity: Сущность Telegram API
+    """
 
     db_entity: TelegramEntity | None
     connect_manager: ConnectManager
@@ -38,8 +45,21 @@ async def _prepare_new_channel_session(
     rlm: ResourceLockManager,
     channel_url: str,
 ) -> SessionResult:
-    """
-    Prepare session for new channels or channel without a subscribed session.
+    """Подготовка сессии для новых каналов или каналов без подписанной сессии.
+
+    Создаёт новую сущность канала в базе данных, получает свободную
+    сессию из пула и устанавливает соединение с Telegram API.
+
+    Args:
+        session: Сессия базы данных
+        rlm: Менеджер блокировки ресурсов
+        channel_url: URL канала Telegram
+
+    Returns:
+        Структура SessionResult с результатом подготовки
+
+    Raises:
+        ValueError: Если сессия не найдена или тип сущности неизвестен
     """
     # Получаем сессию из общего пула
     db_session_id = await rlm.session().__aenter__()
@@ -93,7 +113,22 @@ async def _prepare_subscribed_session(
     db_session: TelegramSession,
     rlm: ResourceLockManager,
 ) -> SessionResult:
-    """Prepare session for channels with existing subscribed session."""
+    """Подготовка сессии для каналов с существующей подписанной сессией.
+
+    Блокирует существующую сессию через менеджер ресурсов и устанавливает
+    соединение с Telegram API.
+
+    Args:
+        db_entity: Сущность канала из базы данных
+        db_session: Сессия Telegram из базы данных
+        rlm: Менеджер блокировки ресурсов
+
+    Returns:
+        Структура SessionResult с результатом подготовки
+
+    Raises:
+        ValueError: Если не удалось заблокировать сессию
+    """
     # Используем подписанную сессию
     if db_session and await rlm.lock(db_session.id):
         logger.info(
@@ -174,7 +209,17 @@ async def _save_collection_metadata(
     message_counter: int,
     metadata: TelegramMessageMetadata | None,
 ) -> None:
-    """Save collection metadata if there are messages."""
+    """Сохранение метаданных коллекции сообщений в базу данных.
+
+    Создаёт запись о собранных данных, только если есть сообщения и все
+    необходимые поля метаданных заполнены.
+
+    Args:
+        session: Сессия базы данных
+        entity_id: ID сущности канала
+        message_counter: Количество собранных сообщений
+        metadata: Метаданные собранных сообщений
+    """
     if message_counter > 0 and metadata is not None:
         # Проверяем, что все значения не None перед вызовом
         if (
@@ -203,19 +248,22 @@ async def _collect_messages_for_range(
     from_datetime: datetime,
     to_datetime: datetime,
 ) -> AsyncIterator[MessageResponseModel]:
-    """Collect messages for a specific date range.
+    """Сбор сообщений из канала Telegram за указанный диапазон дат.
+
+    Последовательно получает сообщения через Telegram API, фильтрует их по
+    заданному диапазону дат и сохраняет метаданные о собранной коллекции.
 
     Args:
-        session: Database session
-        entity_id: ID of the Telegram entity
-        entity: Telegram entity
-        connect_manager: Connection manager
-        channel_url: Channel URL
-        from_datetime: Start of date range
-        to_datetime: End of date range
+        session: Сессия базы данных
+        entity_id: ID сущности канала в базе данных
+        entity: Сущность Telegram API
+        connect_manager: Менеджер соединения с Telegram API
+        channel_url: URL канала Telegram
+        from_datetime: Начальная дата диапазона
+        to_datetime: Конечная дата диапазона
 
     Yields:
-        Message response models
+        Модели сообщений в формате MessageResponseModel
     """
     logger.info(
         "Collecting data for channel %s from %s to %s (adjusted range)",
@@ -260,7 +308,23 @@ async def handle_new_channel(
     datetime_offset: datetime,
     msg: NatsMessage,
 ) -> AsyncIterator[MessageResponseModel]:
-    """Handle new channel subscription request."""
+    """Обработка запроса на подписку на новый канал Telegram.
+
+    Основная функция-обработчик для сбора сообщений из нового канала Telegram.
+    Находит или создаёт сущность канала, устанавливает соединение с
+    Telegram API, определяет непересекающиеся диапазоны дат для сбора данных и
+    последовательно собирает сообщения из каждого диапазона.
+
+    Args:
+        session: Сессия базы данных
+        rlm: Менеджер блокировки ресурсов
+        channel_url: URL канала Telegram
+        datetime_offset: Начальная дата для сбора сообщений
+        msg: Сообщение NATS для подтверждения обработки
+
+    Yields:
+        Собранные сообщения канала в формате MessageResponseModel
+    """
     db_session: TelegramSession | None = None
     connect_manager: ConnectManager | None = None
     try:

@@ -53,19 +53,23 @@ async def handle_schedules(
     session: Annotated[AsyncSession, Depends(get_session, use_cache=False)],
     rlm: Annotated[ResourceLockManager, Depends(Context())],
 ) -> AsyncIterator[MessageResponseModel]:
-    """Handle scheduled parsing tasks.
+    """Обработчик запланированных задач по сбору данных из каналов Telegram.
 
-    Processes scheduled messages for content parsing.
+    Эндпоинт NATS для обработки запланированных сообщений для сбора контента.
+    Подписывается на очередь "schedule" и публикует собранные сообщения
+    в очередь "messages".
+    Использует func handle_schedule из модуля procedures для сбора сообщений,
+    обработки ошибок и подтверждения успешной обработки.
 
     Args:
-        body: Request body containing schedule parameters
-        msg: NATS message object
-        session: Database session
-        rlm: Resource lock manager
+        body: Тело запроса с параметрами для планового сбора данных
+        msg: Объект сообщения NATS
+        session: Сессия базы данных
+        rlm: Менеджер блокировки ресурсов
 
-    Returns:
-        list[MessageResponseModel]: Список собранных сообщений для
-            отправки в ClickHouse
+    Yields:
+        Собранные сообщения в формате MessageResponseModel для
+        отправки в хранилище данных
     """
     db_entity: TelegramSession | None = None
     try:

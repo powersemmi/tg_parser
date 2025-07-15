@@ -157,12 +157,16 @@ async def _collect_messages(
 ) -> AsyncIterator[
     tuple[MessageResponseModel, TelegramMessageMetadata | None, int]
 ]:
-    """Сбор сообщений из Telegram.
+    """Сбор сообщений из Telegram с ограничением по ID сообщения.
+
+    Последовательно собирает сообщения из канала Telegram до достижения
+    указанного ID сообщения. Используется для планового сбора новых сообщений.
+    Отслеживает метаданные собранной коллекции и счетчик сообщений.
 
     Args:
-        tg_entity: Telegram сущность
-        connect_manager: Менеджер соединения
-        last_message_id: ID последнего сообщения
+        tg_entity: Сущность Telegram API
+        connect_manager: Менеджер соединения с Telegram API
+        last_message_id: ID последнего обработанного сообщения
         session: Сессия базы данных
 
     Yields:
@@ -191,6 +195,23 @@ async def handle_schedule(
     last_message_id: int,
     msg: NatsMessage,
 ) -> AsyncIterator[MessageResponseModel]:
+    """Обработка запланированного задания на сбор данных из канала Telegram.
+
+    Основная функция-обработчик для планового сбора новых сообщений из
+    существующего канала. Получает сущность канала и сессию из базы данных,
+    устанавливает соединение с Telegram API и собирает все сообщения с
+    ID больше указанного last_message_id.
+
+    Args:
+        session: Сессия базы данных
+        rlm: Менеджер блокировки ресурсов
+        channel_id: ID канала Telegram
+        last_message_id: ID последнего обработанного сообщения
+        msg: Сообщение NATS для подтверждения обработки
+
+    Yields:
+        Собранные сообщения канала в формате MessageResponseModel
+    """
     logger.info(
         "Processing scheduled task for channel_id=%s from_message_id=%s",
         channel_id,

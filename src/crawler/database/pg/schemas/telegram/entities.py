@@ -4,7 +4,6 @@ from typing import Self
 from sqlalchemy import BigInteger, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
-from telethon import TelegramClient
 
 from crawler.database.pg.schemas.base import BaseSchema
 
@@ -12,6 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramEntity(BaseSchema):
+    """Модель сущности Telegram (канала, чата, пользователя).
+
+    Хранит основную информацию о сущностях Telegram, которые используются
+    в системе сбора данных. Для каждой сущности сохраняется:
+    - entity_id: ID сущности в Telegram
+    - entity_name: Имя сущности (название канала, имя пользователя)
+    - entity_url: URL сущности для доступа в Telegram
+    """
+
     __tablename__ = "entities"
     __table_args__ = ({"schema": "crawler"},)
     entity_id: Mapped[int] = mapped_column(BigInteger)

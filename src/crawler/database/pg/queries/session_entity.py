@@ -15,7 +15,17 @@ async def find_subscribed_session(
     session: AsyncSession, entity_id: int
 ) -> TelegramSession | None:
     """
-    Найти сессию Telegram, которая уже подписана на указанный канал
+    Найти сессию Telegram, которая уже подписана на указанный канал.
+
+    Выполняет SQL-запрос с JOIN для поиска сессии, связанной с указанной
+    сущностью через таблицу связей TelegramSessionEntityMap.
+
+    Args:
+        session: Сессия SQLAlchemy
+        entity_id: ID сущности канала
+
+    Returns:
+        Объект TelegramSession, если найдена подписанная сессия, иначе None
     """
     # Ищем сессию, которая уже связана с этой сущностью
     stmt = (
@@ -36,7 +46,16 @@ async def map_session_to_entity(
 ) -> None:
     """
     Связывает сессию Telegram с сущностью (каналом), отмечая,
-    что этот аккаунт уже подписан
+    что этот аккаунт уже подписан.
+
+    Сначала проверяет существование записи в таблице связей,
+    и если связи нет, создаёт её. Предотвращает дублирование связей
+    благодаря проверке перед созданием.
+
+    Args:
+        session: Сессия SQLAlchemy
+        session_id: ID сессии Telegram
+        entity_id: ID сущности канала
     """
     # Проверяем существование записи
     stmt = select(TelegramSessionEntityMap).where(

@@ -48,18 +48,24 @@ async def handle_new_channels(
     session: Annotated[AsyncSession, Depends(get_session, use_cache=False)],
     rlm: Annotated[ResourceLockManager, Depends(Context())],
 ) -> AsyncIterator[MessageResponseModel]:
-    """Handle requests for processing new channels.
+    """Обработчик запросов на обработку новых каналов Telegram.
 
-    Processes messages from new Telegram channels and sends them in batches.
+    Эндпоинт NATS для обработки новых каналов Telegram. Подписывается на тему
+    "new_channel" и публикует собранные сообщения в настраиваемую тему,
+    указанную в settings.MESSAGE_SUBJECT.
+
+    Использует функцию handle_new_channel из модуля procedures для подготовки
+    сессии, сбора сообщений из указанного канала за заданный период времени,
+    обработки ошибок и подтверждения успешной обработки.
 
     Args:
-        body: Request body containing channel URL and other parameters
-        msg: NATS message object
-        session: Database session
-        rlm: Resource lock manager
+        body: Тело запроса, содержащее URL канала и другие параметры
+        msg: Объект сообщения NATS
+        session: Сессия базы данных
+        rlm: Менеджер блокировки ресурсов
 
     Yields:
-        Batches of processed messages
+        Пакеты обработанных сообщений в формате MessageResponseModel
     """
 
     channel_url = body.channel_url.unicode_string()

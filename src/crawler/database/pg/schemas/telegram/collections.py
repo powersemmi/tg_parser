@@ -12,8 +12,14 @@ from crawler.database.pg.schemas.telegram.entities import TelegramEntity
 
 class TelegramChannelCollection(BaseSchema):
     """
-    Хранит метаданные о сборе данных из каналов.
-    Записывает диапазон собранных сообщений (по id и datetime).
+    Хранит метаданные о сборе данных из каналов Telegram.
+
+    Эта модель представляет запись о собранной коллекции сообщений из канала.
+    Для каждой коллекции сохраняется диапазон собранных сообщений как по ID,
+    так и по дате/времени, а также общее количество сообщений в коллекции.
+
+    Используется для отслеживания уже собранных данных, чтобы избежать
+    повторного сбора тех же самых сообщений при следующих запросах.
     """
 
     __tablename__ = "channel_collections"
@@ -58,20 +64,27 @@ class TelegramChannelCollection(BaseSchema):
         to_datetime: datetime | None,
     ) -> tuple[bool, list["TelegramChannelCollection"]]:
         """
-        Checks if the specified time range overlaps with
-        already collected data.
+        Проверяет, пересекается ли указанный временной диапазон с
+        уже собранными данными.
+
+        Выполняет SQL-запрос для поиска коллекций с временным перекрытием
+        для указанного канала. Рассматривает три варианта
+        пересечения диапазонов:
+        1. Начало нового диапазона попадает в существующий
+        2. Конец нового диапазона попадает в существующий
+        3. Новый диапазон полностью покрывает существующий
 
         Args:
-            session: SQLAlchemy session
-            entity_id: Channel entity ID
-            from_datetime: Start date of the requested range
-            to_datetime: End date of the requested range
-                (if None, from_datetime is used)
+            session: Сессия SQLAlchemy
+            entity_id: ID сущности канала
+            from_datetime: Начальная дата запрашиваемого диапазона
+            to_datetime: Конечная дата запрашиваемого диапазона
+                (если None, используется from_datetime)
 
         Returns:
-            Tuple (has_overlap, overlapping_collections):
-            - has_overlap: True if there is an overlap (data already collected)
-            - overlapping_collections: List of overlapping collections
+            Кортеж (has_overlap, overlapping_collections):
+            - has_overlap: True если есть перекрытие (данные уже собраны)
+            - overlapping_collections: Список перекрывающихся коллекций
         """
         if to_datetime is None:
             to_datetime = from_datetime
@@ -89,7 +102,7 @@ class TelegramChannelCollection(BaseSchema):
                             cls.from_datetime <= from_datetime,
                             from_datetime <= cls.to_datetime,
                         ),
-                        # 2. End of new range falls within existing one
+                        # 2. End of the new range falls within the existing one
                         and_(
                             cls.from_datetime <= to_datetime,
                             to_datetime <= cls.to_datetime,
@@ -119,6 +132,13 @@ class TelegramChannelCollection(BaseSchema):
     ) -> list[tuple[datetime, datetime]]:
         """
         Находит непересекающиеся диапазоны дат, которые нужно собрать.
+
+        Алгоритм работы:
+        1. Проверяет наличие перекрытий с существующими коллекциями
+        2. Если перекрытий нет, возвращает весь запрошенный диапазон
+        3. Если есть перекрытия, сортирует коллекции по времени начала
+        4. Находит промежутки между существующими коллекциями
+        5. Добавляет промежуток после последней коллекции, если необходимо
 
         Args:
             session: Сессия SQLAlchemy
@@ -184,6 +204,23 @@ class TelegramChannelCollection(BaseSchema):
     ) -> "TelegramChannelCollection":
         """
         Создает новую запись о собранных данных из канала.
+
+        Создаёт и сохраняет в базе данных экземпляр модели
+        TelegramChannelCollection с информацией о диапазоне собранных
+        сообщений и их количестве.
+        Выполняет flush для получения ID созданной записи.
+
+        Args:
+            session: Сессия SQLAlchemy
+            entity_id: ID сущности канала
+            from_message_id: ID первого сообщения в коллекции
+            to_message_id: ID последнего сообщения в коллекции
+            from_datetime: Дата/время первого сообщения
+            to_datetime: Дата/время последнего сообщения
+            messages_count: Количество сообщений в коллекции
+
+        Returns:
+            Созданный экземпляр модели TelegramChannelCollection
         """
         collection = cls(
             entity_id=entity_id,
@@ -202,7 +239,21 @@ class TelegramChannelCollection(BaseSchema):
         cls, session: AsyncSession, entity_id: int, from_datetime: datetime
     ) -> list["TelegramChannelCollection"]:
         """
-        Получает все записи о сборах данных для указанного канала.
+        Получает все записи о сборах данных для указанного канала
+        начиная с заданной даты.
+
+        Выполняет SQL-запрос для получения коллекций, принадлежащих указанному
+        каналу и имеющих дату начала не ранее заданной. Результаты сортируются
+        по времени начала коллекции (from_datetime).
+
+        Args:
+            session: Сессия SQLAlchemy
+            entity_id: ID сущности канала
+            from_datetime: Минимальная дата начала коллекции
+
+        Returns:
+            Список объектов TelegramChannelCollection,
+            отсортированных по дате начала
         """
         stmt = (
             select(cls)
