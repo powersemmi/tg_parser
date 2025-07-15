@@ -158,6 +158,7 @@ class ResourceLockManager:
                 self._states[resource_id] = state
             state.version = ver
             state.locked = True
+            self._current = self._states[resource_id]
         logger.info("Locked resource %s, revision=%s", resource_id, ver)
         return True
 
@@ -225,17 +226,12 @@ class ResourceLockManager:
         picked: int | None = None
         try:
             while True:
-                async with self._lock:
-                    free = [
-                        rid
-                        for rid, st in self._states.items()
-                        if not st.locked
-                    ]
+                free = [
+                    rid for rid, st in self._states.items() if not st.locked
+                ]
                 if free:
                     picked = random.choice(free)  # noqa: S311
                     if await self.lock(picked):
-                        async with self._lock:
-                            self._current = self._states[picked]
                         break
                 if deadline and asyncio.get_event_loop().time() > deadline:
                     raise TimeoutError("Timeout waiting for free resource")

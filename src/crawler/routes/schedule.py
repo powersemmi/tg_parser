@@ -24,8 +24,7 @@ from crawler.database.pg.schemas.telegram.collections import (
 )
 from crawler.database.pg.schemas.telegram.entities import TelegramEntity
 from crawler.database.tg import ConnectManager
-from crawler.procedures.parser import TelegramMessageMetadata
-from crawler.procedures.schedule import collect_messages
+from crawler.procedures.parser import TelegramMessageMetadata, collect_messages
 from crawler.schemas.message import MessageResponseModel
 from crawler.schemas.schedule import ScheduleParseMessageSchema
 from crawler.settings import settings
@@ -43,7 +42,7 @@ logger: Logger = logging.getLogger(__name__)
         deliver_subject="schedule.dlq",
         ack_policy=AckPolicy.EXPLICIT,
         deliver_policy=DeliverPolicy.NEW,
-        max_deliver=3,
+        max_deliver=settings.NATS_MAX_DELIVERED_MESSAGES_COUNT,
         max_ack_pending=1,
     ),
 )
@@ -103,10 +102,20 @@ async def handle_schedule(
             return
 
         # Блокируем сессию через resource manager
-        if not await rlm.lock(db_entity.id):
+        if (
+            not await rlm.lock(db_entity.id)
+            and msg.raw_message.metadata.num_delivered
+            < settings.NATS_MAX_DELIVERED_MESSAGES_COUNT
+        ):
             logger.error("Failed to lock session %s", db_entity.id)
             await msg.nack()
             return
+        else:
+            db_entity_id = await rlm.session().__aenter__()
+            db_entity = await TelegramSession.get(session, id=db_entity_id)
+            if db_entity is None:
+                logger.error("Session %s not found", db_entity_id)
+                await msg.nack()
 
         # Создаем connect manager для работы с Telegram API
         async with ConnectManager(

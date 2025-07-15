@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     NATS_KV_BUCKET: str = "TG_RESOURCES"
     NATS_KV_TTL: int = 60
     NATS_JSTREAM: str = "CHAT_PARSER"
+    NATS_MAX_DELIVERED_MESSAGES_COUNT: int = 10
 
     MESSAGE_SUBJECT: str = "telegram.message"
     MESSAGE_STREAM: str = "CHAT_PARSER"

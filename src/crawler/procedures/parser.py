@@ -1,108 +1,32 @@
-"""Telegram message parsing module.
+"""Business logic for handling scheduled parsing tasks.
 
-Provides utilities for crawling and processing messages from Telegram channels.
+Contains functions for processing scheduled message collection.
 """
 
-import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import datetime
-from logging import Logger
-from typing import Any
+from typing import Any, TypedDict
 
-import asyncstdlib
-from sqlalchemy.ext.asyncio import AsyncSession
 from telethon.errors import FloodWaitError
+from telethon.hints import Entity
+from telethon.tl import TLObject
+from telethon.tl.types import (
+    Message,
+    ReactionCustomEmoji,
+    ReactionEmoji,
+    ReactionEmpty,
+    ReactionPaid,
+)
 
-from crawler.database.pg.queries.session_entity import map_session_to_entity
-from crawler.database.pg.schemas.telegram.entities import TelegramEntity
 from crawler.database.tg import ConnectManager
 
-logger: Logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
-
-@dataclass
-class TelegramMessage:
-    """Message data from Telegram channel.
-
-    Represents structured message content retrieved from Telegram.
-    """
-
-    entity_id: int
-    message_id: int
-    date: str
-    text: str
-    raw: str
-
-    @classmethod
-    def from_telethon_message(
-        cls, entity_id: int, message: Any
-    ) -> "TelegramMessage":
-        """Create object from a Telethon message.
-
-        Args:
-            entity_id: Channel entity identifier
-            message: Telethon message object from telethon.tl.types.Message
-
-        Returns:
-            New TelegramMessage instance
-        """
-        # Извлекаем текст сообщения из поля message
-        message_text = ""
-        if hasattr(message, "message") and message.message is not None:
-            message_text = message.message
-
-        # Извлекаем дату сообщения
-        message_date = getattr(message, "date", None)
-        date_str = message_date.isoformat() if message_date else None
-
-        # Получаем ID сообщения
-        message_id = getattr(message, "id", 0)
-
-        return cls(
-            entity_id=entity_id,
-            message_id=message_id,
-            date=date_str,
-            text=message_text,
-            raw=message.to_json(),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for compatibility.
-
-        Returns:
-            Dictionary representation of the message
-        """
-        return {
-            "entity_id": self.entity_id,
-            "message_id": self.message_id,
-            "date": self.date,
-            "text": self.text,
-            "raw": self.raw,
-        }
-
-    @classmethod
-    def create_info_message(
-        cls,
-        message_type: str,
-        message: str,
-        data: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Create an informational message.
-
-        Args:
-            message_type: Type of message (info, error, success)
-            message: Message text content
-            data: Optional additional data
-
-        Returns:
-            Dictionary with message information
-        """
-        result = {"type": message_type, "message": message}
-        if data:
-            result.update(data)
-        return result
+ReactionType: type = type[
+    ReactionEmoji | ReactionCustomEmoji | ReactionPaid | ReactionEmpty
+]
 
 
 @dataclass
@@ -151,56 +75,78 @@ class TelegramMessageMetadata:
         )
 
 
-async def _get_telegram_entity(client: Any, entity: TelegramEntity) -> Any:
-    """Get Telegram entity by ID or URL.
+class ReactionDict(TypedDict):
+    """Словарь для представления реакции на сообщение."""
 
-    Args:
-        client: Telegram client instance
-        entity: Entity database record
+    emoji: str  # Эмодзи или ID кастомной реакции
+    count: int  # Количество реакций данного типа
 
-    Returns:
-        Telethon entity object
+
+class MessageDict(TypedDict):
+    """Словарь для представления сообщения из Telegram.
+
+    Используется для внутренней обработки сообщений в procedures.
+    Структура соответствует MessageResponseModel и отражает основные поля
+    из telethon.tl.types.Message:
+
+    - id (int) -> message_id: ID сообщения
+    - date (datetime): дата отправки
+    - message/text (str) -> message: текст сообщения
+    - from_id (PeerUser) -> sender_id: отправитель
+    - peer_id (Peer) -> entity_id: ID чата/канала
+    - reply_to (MessageReplyHeader) -> reply_to_message_id:
+    ссылка на сообщение-ответ
+    - replies (MessageReplies): информация о ответах на сообщение
+    - views (int): количество просмотров
+    - forwards (int): количество пересылок
+    - media (MessageMedia): медиа-контент в сообщении
+    - reactions (MessageReactions): реакции на сообщение
     """
-    channel_id = int(f"-100{entity.entity_id}")
-    try:
-        # Try to get by ID (faster)
-        return await client.get_input_entity(channel_id)
-    except ValueError:
-        # If failed, get by URL
-        return await client.get_entity(entity.entity_url)
+
+    message_id: int
+    entity_id: int
+    entity_name: str
+    sender_id: int | None
+    sender_name: str | None
+    date: datetime
+    message: str  # Текст сообщения (из message или text поля)
+    reactions: list[ReactionDict]  # Список реакций с emoji и count
+    views: int | None
+    forwards: int | None
+    replies: int | None
+    media_type: str | None
+    media_url: str | None
+    reply_to_message_id: int | None
+    metadata: dict[str, Any]  # Дополнительные данные (entities и т.д.)
 
 
-def _process_message(
-    message: Any,
-    entity_id: int,
-    from_datetime: datetime,
-    metadata: TelegramMessageMetadata,
-) -> tuple[TelegramMessage | None, bool]:
-    """Process message and update metadata.
+async def _iter_messages_locked(
+    connect_manager: ConnectManager, entity: Entity
+) -> AsyncIterator[Message]:
+    """Iterate over messages for a given entity."""
+    async with connect_manager.get_client() as client:
+        async for message in client.iter_messages(
+            entity=entity, reverse=False
+        ):
+            yield message
 
-    Args:
-        message: Telethon message object
-        entity_id: ID of the channel entity
-        from_datetime: Starting datetime for collection
-        metadata: Metadata object to update
 
-    Returns:
-        Tuple of (message object, processed flag)
-    """
-    if message.date >= from_datetime:
-        # Update metadata
-        metadata.update_message(message.id, message.date)
-
-        # Create message object
-        message_obj = TelegramMessage.from_telethon_message(entity_id, message)
-        return message_obj, True
-    return None, False
+def _handle_reaction(reaction: ReactionType) -> str:
+    match reaction:
+        case ReactionEmoji():
+            return reaction.emoticon
+        case ReactionCustomEmoji():
+            return str(reaction.document_id)
+        case ReactionPaid():
+            return "PAID STAR"
+        case _:
+            return "UNKNOWN"
 
 
 def _handle_flood_wait_error(
     e: FloodWaitError,
     metadata: TelegramMessageMetadata,
-    entity: TelegramEntity,
+    entity: Entity,
 ) -> bool:
     """Handle FloodWaitError from Telegram API.
 
@@ -215,7 +161,7 @@ def _handle_flood_wait_error(
     logger.warning(
         "FloodWaitError: need to wait %s seconds for channel %s",
         e.seconds,
-        entity.entity_url,
+        entity.username,
     )
     # Save what we've collected so far
     if metadata.count > 0:
@@ -227,130 +173,136 @@ def _handle_flood_wait_error(
     return False
 
 
-async def _iterate_messages(
-    client: Any,
-    tg_entity: Any,
-    entity_id: int,
-    entity: TelegramEntity,
-    from_datetime: datetime,
-    metadata: TelegramMessageMetadata,
-) -> AsyncIterator[tuple[TelegramMessage | None, TelegramMessageMetadata]]:
-    """Iterate through channel messages and process them.
+def extract_telethon_message_data(
+    message: Message, entity: Entity
+) -> MessageDict:
+    """Извлекает данные из объекта Message библиотеки Telethon.
+
+    Обрабатывает все поля из telethon.tl.types.Message и преобразует их
+    в формат MessageDict для дальнейшей обработки.
 
     Args:
-        client: Telegram client instance
-        tg_entity: Telethon entity object
-        entity_id: ID of the channel entity
-        entity: Channel entity database record
-        from_datetime: Starting datetime for collection
-        metadata: Metadata object to update
+        message: Объект сообщения Telethon
+        entity: Сущность Telegram (канал, чат, пользователь)
 
-    Yields:
-        Tuple of (message object, metadata)
-
-    Raises:
-        ValueError: If no messages are found in the specified timeframe
+    Returns:
+        Кортеж из MessageDict и метаданных
     """
-    # Iterate through messages
-    async for _counter, message in asyncstdlib.enumerate(
-        client.iter_messages(entity=tg_entity, reverse=False)
-    ):
-        message_obj, processed = _process_message(
-            message, entity_id, from_datetime, metadata
-        )
+    # Извлекаем данные отправителя
+    sender_id = None
+    if hasattr(message, "from_id") and message.from_id:
+        sender_id = getattr(message.from_id, "user_id", None)
 
-        if not processed:
-            # If message is older than the specified date, stop collection
-            break
+    # Получаем имя отправителя
+    sender_name = None
+    if hasattr(message, "sender") and message.sender:
+        if hasattr(message.sender, "first_name"):
+            first_name = getattr(message.sender, "first_name", "")
+            last_name = getattr(message.sender, "last_name", "")
+            sender_name = f"{first_name} {last_name}".strip()
+        elif hasattr(message.sender, "title"):
+            sender_name = getattr(message.sender, "title", None)
 
-        # Return message and metadata
-        yield message_obj, metadata
+    # Получаем текст сообщения
+    message_text = ""
+    if hasattr(message, "message"):
+        message_text = message.message or ""
 
-        # Log every 100 messages
-        if metadata.count % 100 == 0:
-            logger.info(
-                "Collected %s messages from channel %s (%s)",
-                metadata.count,
-                entity.entity_name,
-                entity.entity_url,
-            )
+    # Получаем реакции
+    reactions_list = []
+    if hasattr(message, "reactions") and message.reactions:
+        if hasattr(message.reactions, "results"):
+            reactions_list = [
+                {
+                    "emoji": _handle_reaction(rc.reaction),
+                    "count": rc.count,
+                }
+                for rc in message.reactions.results
+            ]
 
-        # Let other tasks work
-        if metadata.count % 20 == 0:
-            await asyncio.sleep(0)
+    # Получаем данные о медиа-контенте
+    media_type = None
+    media_url = None
+    if hasattr(message, "media") and message.media:
+        media_type = message.media.__class__.__name__
+        # URL медиа можно было бы извлечь, но требует дополнительной обработки
 
-    # Check for no messages
-    if metadata.count == 0:
-        raise ValueError(
-            f"Could not find messages in channel {entity.entity_url} "
-            f"from {from_datetime}"
-        )
+    # Получаем ID сообщения, на которое отвечают
+    reply_to_msg_id = None
+    if hasattr(message, "reply_to") and message.reply_to:
+        reply_to_msg_id = getattr(message.reply_to, "reply_to_msg_id", None)
 
-    logger.info(
-        "Completed collection from channel %s (%s): collected %s messages",
-        entity.entity_name,
-        entity.entity_url,
-        metadata.count,
+    # Получаем дополнительные метаданные
+    metadata_dict = {}
+    if hasattr(message, "entities") and message.entities:
+        metadata_dict["entities"] = [
+            {
+                "type": e.__class__.__name__,
+                "offset": e.offset,
+                "length": e.length,
+            }
+            for e in message.entities
+        ]
+
+    # Формируем словарь сообщения
+    return MessageDict(
+        message_id=message.id,
+        entity_id=entity.id,
+        entity_name=entity.username,
+        sender_id=sender_id,
+        sender_name=sender_name,
+        date=message.date,
+        message=message_text,
+        reactions=reactions_list,
+        views=message.views,
+        forwards=message.forwards,
+        replies=message.replies.replies
+        if isinstance(message.replies, TLObject)
+        else None,
+        media_type=media_type,
+        media_url=media_url,
+        reply_to_message_id=reply_to_msg_id,
+        metadata=metadata_dict,
     )
 
 
-async def crawl_messages(
-    tg_session_id: int,
-    entity_id: int,
-    from_datetime: datetime,
-    db_session: AsyncSession,
+async def collect_messages(
+    entity: Entity,
     connect_manager: ConnectManager,
-) -> AsyncIterator[tuple[TelegramMessage | None, TelegramMessageMetadata]]:
-    """Asynchronous iterator for collecting messages from a Telegram channel.
+    condition: Callable[[Message], bool],
+) -> AsyncIterator[tuple[MessageDict | None, TelegramMessageMetadata | None]]:
+    """Collect messages from Telegram entity using connected client.
 
     Args:
-        tg_session_id: ID of the Telegram session
-        entity_id: ID of the channel entity
-        from_datetime: Starting datetime for collection
-        db_session: Database session
-        connect_manager: Telegram connection manager
+        entity: Entity to collect messages from
+        connect_manager: Connected Telegram client
+        condition: Condition to filter messages by (e.g. by sender)
 
-    Yields:
-        Tuple of (message object, metadata)
-
-    Raises:
-        ValueError: If channel is not found
-        Exception: For any other errors during collection
+    Returns:
+        Tuple of (collected_messages, metadata)
     """
-    # Get channel entity
-    entity = await TelegramEntity.get(db_session, entity_id)
-    if not entity:
-        raise ValueError(f"Channel with ID {entity_id} not found")
+    metadata: TelegramMessageMetadata | None = None
+    # Обрабатываем полученные сообщения
+    try:
+        async for message in _iter_messages_locked(
+            connect_manager=connect_manager, entity=entity
+        ):
+            if condition(message):
+                break
 
-    # Initialize metadata
-    metadata = TelegramMessageMetadata()
+            # Обновляем метаданные
+            if metadata is None:
+                metadata = TelegramMessageMetadata()
+            if metadata is not None:
+                metadata.update_message(message.id, message.date)
 
-    # Use Telegram client
-    async with connect_manager.get_client() as client:
-        try:
-            # Get Telegram entity
-            tg_entity = await _get_telegram_entity(client, entity)
-
-            # Update session-channel mapping
-            await map_session_to_entity(db_session, tg_session_id, entity_id)
-
-            # Iterate through messages and process them
-            async for message_data in _iterate_messages(
-                client, tg_entity, entity_id, entity, from_datetime, metadata
-            ):
-                yield message_data
-
-        except FloodWaitError as e:
-            # Handle rate limiting from Telegram
-            if _handle_flood_wait_error(e, metadata, entity):
-                # Return final metadata
-                yield None, metadata
-            else:
-                raise
-        except Exception as e:
-            logger.exception(
-                "Error collecting messages from channel %s: %s",
-                entity.entity_url,
-                e,
-            )
-            raise
+            yield extract_telethon_message_data(message, entity), metadata
+    except FloodWaitError as e:
+        # Handle rate limiting from Telegram
+        if metadata is not None and _handle_flood_wait_error(
+            e, metadata, entity
+        ):
+            # Return final metadata
+            yield None, metadata
+        else:
+            yield None, None
