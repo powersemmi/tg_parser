@@ -4,7 +4,7 @@ import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, Literal, Self, cast
+from typing import Any, Literal, Self
 
 from faststream.nats import NatsBroker
 from nats.js.errors import KeyValueError, KeyWrongLastSequenceError

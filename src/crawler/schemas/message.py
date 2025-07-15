@@ -4,7 +4,7 @@ Contains models for representing collected messages.
 """
 
 from datetime import datetime
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 

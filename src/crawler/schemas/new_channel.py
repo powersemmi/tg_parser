@@ -1,8 +1,3 @@
-"""Schema for new channel parsing requests.
-
-Contains models for validating new channel request messages.
-"""
-
 from datetime import datetime, timedelta
 from typing import Annotated
 
@@ -34,7 +29,7 @@ def not_older_than_30_days(dt: AwareDatetime) -> AwareDatetime:
     return dt
 
 
-RecentDateTime = Annotated[
+type RecentDateTime = Annotated[
     AwareDatetime, AfterValidator(not_older_than_30_days)
 ]
 

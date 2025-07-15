@@ -1,10 +1,3 @@
-"""Broker module that configures NATS broker for the crawler application.
-
-Contains the initialization of the NATS broker with configuration settings.
-The broker handles message publishing and subscription for all
-application routes.
-"""
-
 import logging
 from logging import Logger
 

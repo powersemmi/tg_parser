@@ -14,11 +14,6 @@ from crawler.database.pg.schemas.telegram.sessions import TelegramSession
 from crawler.routes import new_channel, schedule
 from crawler.settings import settings
 
-"""Main application module for the crawler service.
-
-Contains application initialization and configuration.
-"""
-
 sys.excepthook = sys.__excepthook__
 logger: Logger = logging.getLogger(__name__)
 

@@ -1,8 +1,3 @@
-"""Schema for scheduled message parsing tasks.
-
-Contains models for validating schedule request messages.
-"""
-
 from typing import Annotated
 
 from pydantic import BaseModel, Field
