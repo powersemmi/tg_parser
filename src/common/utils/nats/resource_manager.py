@@ -244,8 +244,6 @@ class ResourceLockManager:
         finally:
             if picked is not None:
                 await self.unlock(picked)
-                async with self._lock:
-                    self._current = None
 
     async def update_resources(self, new_ids: list[int]) -> None:
         """
