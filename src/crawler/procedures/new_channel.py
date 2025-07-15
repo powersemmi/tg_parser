@@ -28,7 +28,7 @@ class SessionResult(NamedTuple):
     """Result of session preparation."""
 
     db_entity: TelegramEntity | None
-    connect_manager: ConnectManager | None
+    connect_manager: ConnectManager
     db_session: TelegramSession | None
     tg_entity: Entity
 
@@ -176,15 +176,22 @@ async def _save_collection_metadata(
 ) -> None:
     """Save collection metadata if there are messages."""
     if message_counter > 0 and metadata is not None:
-        await TelegramChannelCollection.create_collection_record(
-            session=session,
-            entity_id=entity_id,
-            from_message_id=metadata.from_message_id,
-            to_message_id=metadata.to_message_id,
-            from_datetime=metadata.from_datetime,
-            to_datetime=metadata.to_datetime,
-            messages_count=message_counter,
-        )
+        # Проверяем, что все значения не None перед вызовом
+        if (
+            metadata.from_message_id is not None
+            and metadata.to_message_id is not None
+            and metadata.from_datetime is not None
+            and metadata.to_datetime is not None
+        ):
+            await TelegramChannelCollection.create_collection_record(
+                session=session,
+                entity_id=entity_id,
+                from_message_id=metadata.from_message_id,
+                to_message_id=metadata.to_message_id,
+                from_datetime=metadata.from_datetime,
+                to_datetime=metadata.to_datetime,
+                messages_count=message_counter,
+            )
 
 
 async def _collect_messages_for_range(
@@ -303,7 +310,7 @@ async def handle_new_channel(
                 session=session,
                 entity_id=res.tg_entity.id,
                 entity=res.tg_entity,
-                connect_manager=res.connect_manager,
+                connect_manager=connect_manager,
                 channel_url=channel_url,
                 from_datetime=from_datetime,
                 to_datetime=to_datetime,

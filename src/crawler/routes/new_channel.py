@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.utils.nats.resource_manager import ResourceLockManager
 from crawler.database.pg.db import get_session
-from crawler.procedures.new_channels import handle_new_channel
+from crawler.procedures.new_channel import handle_new_channel
 from crawler.schemas.message import MessageResponseModel
 from crawler.schemas.new_channel import NewChannelParseMessageBody
 from crawler.settings import settings

@@ -24,9 +24,9 @@ from crawler.database.tg import ConnectManager
 
 logger = logging.getLogger(__name__)
 
-ReactionType: type = type[
+type ReactionType = (
     ReactionEmoji | ReactionCustomEmoji | ReactionPaid | ReactionEmpty
-]
+)
 
 
 @dataclass
@@ -173,22 +173,16 @@ def _handle_flood_wait_error(
     return False
 
 
-def extract_telethon_message_data(
-    message: Message, entity: Entity
-) -> MessageDict:
-    """Извлекает данные из объекта Message библиотеки Telethon.
-
-    Обрабатывает все поля из telethon.tl.types.Message и преобразует их
-    в формат MessageDict для дальнейшей обработки.
+def _extract_sender_info(message: Message) -> tuple[int | None, str | None]:
+    """Извлекает информацию об отправителе сообщения.
 
     Args:
         message: Объект сообщения Telethon
-        entity: Сущность Telegram (канал, чат, пользователь)
 
     Returns:
-        Кортеж из MessageDict и метаданных
+        Кортеж из (sender_id, sender_name)
     """
-    # Извлекаем данные отправителя
+    # Извлекаем ID отправителя
     sender_id = None
     if hasattr(message, "from_id") and message.from_id:
         sender_id = getattr(message.from_id, "user_id", None)
@@ -203,37 +197,41 @@ def extract_telethon_message_data(
         elif hasattr(message.sender, "title"):
             sender_name = getattr(message.sender, "title", None)
 
-    # Получаем текст сообщения
-    message_text = ""
-    if hasattr(message, "message"):
-        message_text = message.message or ""
+    return sender_id, sender_name
 
-    # Получаем реакции
-    reactions_list = []
-    if hasattr(message, "reactions") and message.reactions:
-        if hasattr(message.reactions, "results"):
-            reactions_list = [
-                {
-                    "emoji": _handle_reaction(rc.reaction),
-                    "count": rc.count,
-                }
-                for rc in message.reactions.results
-            ]
 
-    # Получаем данные о медиа-контенте
-    media_type = None
-    media_url = None
-    if hasattr(message, "media") and message.media:
-        media_type = message.media.__class__.__name__
-        # URL медиа можно было бы извлечь, но требует дополнительной обработки
+def _extract_reactions(message: Message) -> list[ReactionDict]:
+    """Извлекает реакции на сообщение.
 
-    # Получаем ID сообщения, на которое отвечают
-    reply_to_msg_id = None
-    if hasattr(message, "reply_to") and message.reply_to:
-        reply_to_msg_id = getattr(message.reply_to, "reply_to_msg_id", None)
+    Args:
+        message: Объект сообщения Telethon
 
-    # Получаем дополнительные метаданные
+    Returns:
+        Список реакций
+    """
+    if not hasattr(message, "reactions") or not message.reactions:
+        return []
+
+    if not hasattr(message.reactions, "results"):
+        return []
+
+    return [
+        ReactionDict(emoji=_handle_reaction(rc.reaction), count=rc.count)
+        for rc in message.reactions.results
+    ]
+
+
+def _extract_message_metadata(message: Message) -> dict[str, Any]:
+    """Извлекает дополнительные метаданные сообщения.
+
+    Args:
+        message: Объект сообщения Telethon
+
+    Returns:
+        Словарь с метаданными
+    """
     metadata_dict = {}
+
     if hasattr(message, "entities") and message.entities:
         metadata_dict["entities"] = [
             {
@@ -243,6 +241,64 @@ def extract_telethon_message_data(
             }
             for e in message.entities
         ]
+
+    return metadata_dict
+
+
+def _extract_media_info(message: Message) -> tuple[str | None, str | None]:
+    """Извлекает информацию о медиа-контенте сообщения.
+
+    Args:
+        message: Объект сообщения Telethon
+
+    Returns:
+        Кортеж из (media_type, media_url)
+    """
+    media_type = None
+    media_url = None
+
+    if hasattr(message, "media") and message.media:
+        media_type = message.media.__class__.__name__
+        # URL медиа можно было бы извлечь, но требует дополнительной обработки
+
+    return media_type, media_url
+
+
+def extract_telethon_message_data(
+    message: Message, entity: Entity
+) -> MessageDict:
+    """Извлекает данные из объекта Message библиотеки Telethon.
+
+    Обрабатывает все поля из telethon.tl.types.Message и преобразует их
+    в формат MessageDict для дальнейшей обработки.
+
+    Args:
+        message: Объект сообщения Telethon
+        entity: Сущность Telegram (канал, чат, пользователь)
+
+    Returns:
+        Словарь с данными сообщения
+    """
+    # Получаем основные компоненты сообщения из вспомогательных функций
+    sender_id, sender_name = _extract_sender_info(message)
+    reactions_list = _extract_reactions(message)
+    metadata_dict = _extract_message_metadata(message)
+    media_type, media_url = _extract_media_info(message)
+
+    # Получаем текст сообщения
+    message_text = ""
+    if hasattr(message, "message"):
+        message_text = message.message or ""
+
+    # Получаем ID сообщения, на которое отвечают
+    reply_to_msg_id = None
+    if hasattr(message, "reply_to") and message.reply_to:
+        reply_to_msg_id = getattr(message.reply_to, "reply_to_msg_id", None)
+
+    # Получаем число ответов на сообщение
+    replies_count = None
+    if hasattr(message, "replies") and isinstance(message.replies, TLObject):
+        replies_count = message.replies.replies
 
     # Формируем словарь сообщения
     return MessageDict(
@@ -256,9 +312,7 @@ def extract_telethon_message_data(
         reactions=reactions_list,
         views=message.views,
         forwards=message.forwards,
-        replies=message.replies.replies
-        if isinstance(message.replies, TLObject)
-        else None,
+        replies=replies_count,
         media_type=media_type,
         media_url=media_url,
         reply_to_message_id=reply_to_msg_id,
