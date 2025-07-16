@@ -2,7 +2,7 @@
 FROM python:3.13-slim AS builder
 LABEL authors="powersemmi@gmail.com"
 
-# Отключаем кеш pip и устанавливаем нужные инструменты
+# Disable pip cache and install necessary tools
 ENV PIP_NO_CACHE_DIR=off \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PDM_VERSION=2.24.2 \
@@ -14,7 +14,7 @@ ENV PIP_NO_CACHE_DIR=off \
 
 WORKDIR /opt/app
 
-# Устанавливаем pip, setuptools, wheel, затем pdm и uv
+# Install pip, setuptools, wheel, then pdm and uv
 RUN pip install --upgrade \
         "pip==$PIP_VERSION" \
         "setuptools==$SETUPTOOLS_VERSION" \
@@ -24,10 +24,10 @@ RUN pip install --upgrade \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Копируем метаданные проекта
+# Copy project metadata
 COPY pyproject.toml pdm.lock /opt/app/
 
-# Создаём виртуальное окружение вручную и подготавливаем его для сборки
+# Create virtual environment manually and prepare it for building
 RUN python -m venv .venv \
     && . .venv/bin/activate \
     && pip install --upgrade \
@@ -35,7 +35,7 @@ RUN python -m venv .venv \
         "setuptools==$SETUPTOOLS_VERSION" \
         "wheel==$WHEEL_VERSION"
 
-# Настраиваем PDM на использование uv как резолвера/установщика
+# Configure PDM to use uv as resolver/installer
 RUN pdm config venv.location ".venv" \
     && pdm config use_uv true
 
@@ -48,7 +48,7 @@ FROM builder AS tester
 # Setup dev dependency
 RUN pdm install --dev --frozen-lockfile --no-editable
 
-# По умолчанию запускаем REPL для тестирования
+# By default, run REPL for testing
 ENTRYPOINT ["pdm", "run", "python"]
 
 
@@ -59,18 +59,18 @@ LABEL maintainer="powersemmi@gmail.com"
 ENV TZ=Europe/Chisinau \
     PYTHONFAULTHANDLER=1 \
     PYTHONBUFFERED=1 \
-    # Добавляем .venv в PATH, чтобы сразу видеть установленные пакеты
+    # Add .venv to PATH to immediately see installed packages
     PATH=/opt/app/.venv/bin:$PATH
 
 WORKDIR /opt/app
 
-# Копируем код приложения
+# Copy application code
 
 COPY src/crawler/migrations/alembic.ini alembic.ini
 COPY src/crawler chat_parser
 COPY pyproject.toml .
 
-# Копируем виртуальное окружение из билдера
+# Copy virtual environment from builder
 COPY --from=builder /opt/app/.venv /opt/app/.venv
 
 ENTRYPOINT ["python", "-m", "faststream", "run", "chat_parser.app:app", "--host", "0.0.0.0", "--port", "8080"]
