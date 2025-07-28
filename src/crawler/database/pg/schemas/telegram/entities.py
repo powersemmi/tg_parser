@@ -50,7 +50,7 @@ class Entities(BaseSchema):
         channel_url: str,
         entity_id: int,
         entity_name: str,
-    ) -> Self:
+    ) -> tuple[Self, bool]:
         """
         Получить или создать сущность канала в базе данных.
 

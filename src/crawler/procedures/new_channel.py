@@ -95,7 +95,7 @@ async def _prepare_new_channel_session(
     else:
         raise ValueError(f"Неизвестный тип сущности: {type(tg_entity)}")
 
-    db_entity, is_new = await Entities.create_entity(
+    db_entity, _ = await Entities.create_entity(
         session=session,
         channel_url=channel_url,
         entity_id=entity_id,
