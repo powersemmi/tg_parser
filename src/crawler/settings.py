@@ -36,13 +36,13 @@ class Settings(BaseSettings):
 
     NATS_DSN: conlist(NatsDsn, min_length=1)  # type: ignore[valid-type]
     NATS_PREFIX: str = "crawler.tasks."
+    NATS_STREAM: str = "CHAT_PARSER_TASKS"
     NATS_KV_BUCKET: str = "TG_RESOURCES"
     NATS_KV_TTL: int = 60
-    NATS_JSTREAM: str = "CHAT_PARSER"
     NATS_MAX_DELIVERED_MESSAGES_COUNT: int = 10
 
     MESSAGE_SUBJECT: str = "telegram.message"
-    MESSAGE_STREAM: str = "CHAT_PARSER"
+    MESSAGE_STREAM: str = "CHAT_PARSER_MESSAGES"
     MESSAGE_BATCH_SIZE: int = 20
 
     model_config = SettingsConfigDict(

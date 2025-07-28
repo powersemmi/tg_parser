@@ -1,8 +1,3 @@
-"""Router for handling scheduled task requests.
-
-Provides endpoints for processing scheduled parsing tasks.
-"""
-
 import logging
 from collections.abc import AsyncIterator
 from logging import Logger
@@ -30,7 +25,7 @@ logger: Logger = logging.getLogger(__name__)
 
 @router.subscriber(
     "schedule",
-    stream=JStream(name=settings.NATS_PREFIX),
+    stream=JStream(name=settings.NATS_STREAM),
     config=ConsumerConfig(
         durable_name="schedule_consumer",
         deliver_subject="schedule.dlq",
@@ -41,17 +36,14 @@ logger: Logger = logging.getLogger(__name__)
     ),
 )
 @router.publisher(
-    "messages",
-    stream=JStream(
-        name=settings.NATS_PREFIX,
-        subjects=["messages"],
-    ),
+    subject=settings.MESSAGE_SUBJECT,
+    stream=JStream(name=settings.MESSAGE_STREAM),
 )
 async def handle_schedules(
     body: ScheduleParseMessageSchema,
     msg: NatsMessage,
     session: Annotated[AsyncSession, Depends(get_session, use_cache=False)],
-    rlm: Annotated[ResourceLockManager, Depends(Context())],
+    rlm: Annotated[ResourceLockManager, Depends(Context)],
 ) -> AsyncIterator[MessageResponseModel]:
     """Обработчик запланированных задач по сбору данных из каналов Telegram.
 

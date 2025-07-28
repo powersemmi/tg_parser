@@ -1,6 +1,6 @@
 import logging
 import sys
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from logging import Logger
 
@@ -19,7 +19,7 @@ logger: Logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(context: ContextRepo) -> AsyncGenerator[None]:
+async def lifespan(context: ContextRepo) -> AsyncIterator[None]:
     """Application lifecycle manager.
 
     Sets up resources and manages their lifecycle during application runtime.
@@ -32,20 +32,17 @@ async def lifespan(context: ContextRepo) -> AsyncGenerator[None]:
     """
     async with async_session() as session:
         resource_ids = await Sessions.get_all_id(session=session)
-    async with broker:
-        await broker.publish(
-            "test", subject="new_channel", stream="CHAT_PARSER"
-        )
-        async with ResourceLockManager(
-            broker=broker,
-            key_prefix=settings.NATS_PREFIX,
-            resource_ids=resource_ids,
-            kv_bucket=settings.NATS_KV_BUCKET,
-            instance_id=settings.POD_NAME,
-            ttl=settings.NATS_KV_TTL,
-        ) as rlm:
-            context.set_global("rlm", rlm)
-            yield
+    await broker.start()
+    async with ResourceLockManager(
+        broker=broker,
+        key_prefix=settings.NATS_PREFIX,
+        resource_ids=resource_ids,
+        kv_bucket=settings.NATS_KV_BUCKET,
+        instance_id=settings.POD_NAME,
+        ttl=settings.NATS_KV_TTL,
+    ) as rlm:
+        context.set_global("rlm", rlm)
+        yield
 
 
 def create_app() -> FastStream:
@@ -54,6 +51,7 @@ def create_app() -> FastStream:
     Returns:
         Configured FastStream application instance
     """
+    config.fileConfig("pyproject.toml")
     application = FastStream(
         broker=broker,
         title=settings.APP_NAME.title().replace("-", " "),
@@ -66,7 +64,3 @@ def create_app() -> FastStream:
     broker.include_router(schedule.router)
 
     return application
-
-
-config.fileConfig("pyproject.toml")
-app: FastStream = create_app()

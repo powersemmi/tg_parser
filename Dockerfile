@@ -67,10 +67,10 @@ WORKDIR /opt/app
 # Copy application code
 
 COPY src/crawler/migrations/alembic.ini alembic.ini
-COPY src/crawler chat_parser
+COPY src/crawler crawler
 COPY pyproject.toml .
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/app/.venv /opt/app/.venv
 
-ENTRYPOINT ["python", "-m", "faststream", "run", "chat_parser.app:app", "--host", "0.0.0.0", "--port", "8080"]
+ENTRYPOINT ["python", "-m", "faststream", "run", "--factory", "crawler.app:create_app", "--host", "0.0.0.0", "--port", "8080"]

@@ -1,8 +1,3 @@
-"""Router for handling new channel subscription requests.
-
-Provides endpoints for processing new Telegram channels.
-"""
-
 import logging
 from collections.abc import AsyncIterator
 from logging import Logger
@@ -28,13 +23,13 @@ logger: Logger = logging.getLogger(__name__)
 
 @router.subscriber(
     "new_channel",
-    stream=JStream(name=settings.NATS_JSTREAM),
+    stream=JStream(name=settings.NATS_STREAM),
     config=ConsumerConfig(
         durable_name="new_channel_consumer",
         deliver_subject="new_channel.dlq",
         ack_policy=AckPolicy.EXPLICIT,
         deliver_policy=DeliverPolicy.NEW,
-        max_deliver=3,
+        max_deliver=settings.NATS_MAX_DELIVERED_MESSAGES_COUNT,
         max_ack_pending=1,
     ),
 )
@@ -46,7 +41,7 @@ async def handle_new_channels(
     body: NewChannelParseMessageBody,
     msg: NatsMessage,
     session: Annotated[AsyncSession, Depends(get_session, use_cache=False)],
-    rlm: Annotated[ResourceLockManager, Depends(Context())],
+    rlm: Annotated[ResourceLockManager, Depends(Context)],
 ) -> AsyncIterator[MessageResponseModel]:
     """Обработчик запросов на обработку новых каналов Telegram.
 
