@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from crawler.database.pg.schemas.base import BaseSchema
 
 
-class TelegramSession(BaseSchema):
+class Sessions(BaseSchema):
     """Модель сессии Telegram для доступа к API.
 
     Хранит данные авторизации и настройки для подключения к Telegram API.
@@ -22,7 +22,6 @@ class TelegramSession(BaseSchema):
         proxy: Настройки прокси (URL) для подключения
     """
 
-    __tablename__ = "sessions"
     __table_args__ = ({"schema": "crawler"},)
     session: Mapped[str]
     api_id: Mapped[int] = mapped_column(BigInteger)

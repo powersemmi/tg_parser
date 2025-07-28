@@ -10,7 +10,7 @@ from logging518 import config
 from common.utils.nats.resource_manager import ResourceLockManager
 from crawler.brokers import broker
 from crawler.database.pg.db import async_session
-from crawler.database.pg.schemas.telegram.sessions import TelegramSession
+from crawler.database.pg.schemas.telegram.sessions import Sessions
 from crawler.routes import new_channel, schedule
 from crawler.settings import settings
 
@@ -31,7 +31,7 @@ async def lifespan(context: ContextRepo) -> AsyncGenerator[None]:
         Control back to the application server
     """
     async with async_session() as session:
-        resource_ids = await TelegramSession.get_all_id(session=session)
+        resource_ids = await Sessions.get_all_id(session=session)
     async with broker:
         await broker.publish(
             "test", subject="new_channel", stream="CHAT_PARSER"

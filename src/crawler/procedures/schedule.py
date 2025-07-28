@@ -7,9 +7,9 @@ from telethon.hints import Entity
 
 from common.utils.nats.resource_manager import ResourceLockManager
 from crawler.database.pg.queries.session_entity import find_subscribed_session
-from crawler.database.pg.schemas import TelegramEntity, TelegramSession
-from crawler.database.pg.schemas.telegram.collections import (
-    TelegramChannelCollection,
+from crawler.database.pg.schemas import Entities, Sessions
+from crawler.database.pg.schemas.telegram.channel_metadata import (
+    ChannelMetadata,
 )
 from crawler.database.tg import ConnectManager
 from crawler.procedures.parser import TelegramMessageMetadata, collect_messages
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def _get_telegram_entity(
     session: AsyncSession, channel_id: int, msg: NatsMessage
-) -> TelegramEntity | None:
+) -> Entities | None:
     """Получение Telegram сущности по ID канала.
 
     Args:
@@ -32,7 +32,7 @@ async def _get_telegram_entity(
     Returns:
         Сущность Telegram или None в случае ошибки
     """
-    tg_entity = await TelegramEntity.get_by_entity_id(session, channel_id)
+    tg_entity = await Entities.get_by_entity_id(session, channel_id)
     if not tg_entity:
         logger.error(f"Entity not found for channel_id={channel_id}")
         await (
@@ -47,7 +47,7 @@ async def _get_and_lock_session(
     rlm: ResourceLockManager,
     entity_id: int,
     msg: NatsMessage,
-) -> TelegramSession | None:
+) -> Sessions | None:
     """Получение и блокировка сессии Telegram.
 
     Args:
@@ -80,7 +80,7 @@ async def _get_and_lock_session(
 
     # Получаем сессию из пула
     db_entity_id = await rlm.session().__aenter__()
-    db_entity = await TelegramSession.get(session, id=db_entity_id)
+    db_entity = await Sessions.get(session, id=db_entity_id)
     if db_entity is None:
         logger.error("Session %s not found", db_entity_id)
         await msg.nack()
@@ -138,7 +138,7 @@ async def _save_collection_metadata(
             and metadata.from_datetime is not None
             and metadata.to_datetime is not None
         ):
-            await TelegramChannelCollection.create_collection_record(
+            await ChannelMetadata.create_collection_record(
                 session=session,
                 entity_id=entity_id,
                 from_message_id=metadata.from_message_id,

@@ -3,17 +3,17 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from crawler.database.pg.schemas.telegram.mapping import (
-    TelegramSessionEntityMap,
+from crawler.database.pg.schemas.telegram.session_entity_map import (
+    SessionEntityMap,
 )
-from crawler.database.pg.schemas.telegram.sessions import TelegramSession
+from crawler.database.pg.schemas.telegram.sessions import Sessions
 
 logger = logging.getLogger(__name__)
 
 
 async def find_subscribed_session(
     session: AsyncSession, entity_id: int
-) -> TelegramSession | None:
+) -> Sessions | None:
     """
     Найти сессию Telegram, которая уже подписана на указанный канал.
 
@@ -29,12 +29,12 @@ async def find_subscribed_session(
     """
     # Ищем сессию, которая уже связана с этой сущностью
     stmt = (
-        select(TelegramSession)
+        select(Sessions)
         .join(
-            TelegramSessionEntityMap,
-            TelegramSessionEntityMap.session_id == TelegramSession.id,
+            SessionEntityMap,
+            SessionEntityMap.session_id == Sessions.id,
         )
-        .where(TelegramSessionEntityMap.entity_id == entity_id)
+        .where(SessionEntityMap.entity_id == entity_id)
     )
 
     result = await session.execute(stmt)
@@ -58,18 +58,16 @@ async def map_session_to_entity(
         entity_id: ID сущности канала
     """
     # Проверяем существование записи
-    stmt = select(TelegramSessionEntityMap).where(
-        (TelegramSessionEntityMap.session_id == session_id)
-        & (TelegramSessionEntityMap.entity_id == entity_id)
+    stmt = select(SessionEntityMap).where(
+        (SessionEntityMap.session_id == session_id)
+        & (SessionEntityMap.entity_id == entity_id)
     )
     result = await session.execute(stmt)
     mapping = result.scalars().first()
 
     # Если связи нет, создаем ее
     if not mapping:
-        mapping = TelegramSessionEntityMap(
-            session_id=session_id, entity_id=entity_id
-        )
+        mapping = SessionEntityMap(session_id=session_id, entity_id=entity_id)
         session.add(mapping)
         await session.flush()
         logger.info(

@@ -13,9 +13,9 @@ from common.utils.nats.resource_manager import ResourceLockManager
 from crawler.database.pg.queries.session_entity import (
     find_subscribed_session,
 )
-from crawler.database.pg.schemas import TelegramEntity, TelegramSession
-from crawler.database.pg.schemas.telegram.collections import (
-    TelegramChannelCollection,
+from crawler.database.pg.schemas import Entities, Sessions
+from crawler.database.pg.schemas.telegram.channel_metadata import (
+    ChannelMetadata,
 )
 from crawler.database.tg import ConnectManager
 from crawler.procedures.parser import TelegramMessageMetadata, collect_messages
@@ -34,9 +34,9 @@ class SessionResult(NamedTuple):
         tg_entity: Сущность Telegram API
     """
 
-    db_entity: TelegramEntity | None
+    db_entity: Entities | None
     connect_manager: ConnectManager
-    db_session: TelegramSession | None
+    db_session: Sessions | None
     tg_entity: Entity
 
 
@@ -63,11 +63,9 @@ async def _prepare_new_channel_session(
     """
     # Получаем сессию из общего пула
     db_session_id = await rlm.session().__aenter__()
-    db_session = await TelegramSession.get(session=session, id=db_session_id)
+    db_session = await Sessions.get(session=session, id=db_session_id)
     if db_session is None:
-        await rlm.update_resources(
-            await TelegramSession.get_all_id(session=session)
-        )
+        await rlm.update_resources(await Sessions.get_all_id(session=session))
         logger.warning(
             "Session %s not found, update local sessions",
             db_session_id,
@@ -97,7 +95,7 @@ async def _prepare_new_channel_session(
     else:
         raise ValueError(f"Неизвестный тип сущности: {type(tg_entity)}")
 
-    db_entity = await TelegramEntity.create_entity(
+    db_entity, is_new = await Entities.create_entity(
         session=session,
         channel_url=channel_url,
         entity_id=entity_id,
@@ -109,8 +107,8 @@ async def _prepare_new_channel_session(
 
 
 async def _prepare_subscribed_session(
-    db_entity: TelegramEntity,
-    db_session: TelegramSession,
+    db_entity: Entities,
+    db_session: Sessions,
     rlm: ResourceLockManager,
 ) -> SessionResult:
     """Подготовка сессии для каналов с существующей подписанной сессией.
@@ -180,9 +178,9 @@ async def prepare_channel_and_session(
 
     # Находим сущность по channel_url
     if entity_id:
-        db_entity = await TelegramEntity.get_by_entity_id(session, entity_id)
+        db_entity = await Entities.get_by_entity_id(session, entity_id)
     else:
-        db_entity = await TelegramEntity.get_by_url(session, channel_url)
+        db_entity = await Entities.get_by_url(session, channel_url)
 
     # Находим подписанную сессию для существующей сущности
     if db_entity:
@@ -228,7 +226,7 @@ async def _save_collection_metadata(
             and metadata.from_datetime is not None
             and metadata.to_datetime is not None
         ):
-            await TelegramChannelCollection.create_collection_record(
+            await ChannelMetadata.create_collection_record(
                 session=session,
                 entity_id=entity_id,
                 from_message_id=metadata.from_message_id,
@@ -325,11 +323,11 @@ async def handle_new_channel(
     Yields:
         Собранные сообщения канала в формате MessageResponseModel
     """
-    db_session: TelegramSession | None = None
+    db_session: Sessions | None = None
     connect_manager: ConnectManager | None = None
     try:
         # Находим сущность по channel_id
-        db_entity = await TelegramEntity.get_by_url(
+        db_entity = await Entities.get_by_url(
             session=session,
             channel_url=channel_url,
         )
@@ -348,13 +346,11 @@ async def handle_new_channel(
         current_time = datetime.now(datetime_offset.tzinfo)
 
         # Находим непересекающиеся диапазоны, которые нужно собрать
-        ranges_to_collect = (
-            await TelegramChannelCollection.find_non_overlapping_ranges(
-                session=session,
-                entity_id=res.tg_entity.id,
-                from_datetime=datetime_offset,
-                to_datetime=current_time,
-            )
+        ranges_to_collect = await ChannelMetadata.find_non_overlapping_ranges(
+            session=session,
+            entity_id=res.tg_entity.id,
+            from_datetime=datetime_offset,
+            to_datetime=current_time,
         )
 
         if not ranges_to_collect:

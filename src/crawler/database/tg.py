@@ -28,7 +28,7 @@ from tenacity import (
 
 from common.utils.nats.resource_manager import ResourceLockManager
 from crawler.database.pg.db import get_session
-from crawler.database.pg.schemas.telegram.sessions import TelegramSession
+from crawler.database.pg.schemas.telegram.sessions import Sessions
 
 logger: Logger = logging.getLogger(__name__)
 
@@ -245,9 +245,7 @@ async def get_tg_client(
         ValueError: If the session ID is not found in the database
     """
     async with rlm.session() as tg_session_id:
-        tg_session = await TelegramSession.get(
-            session=session, id=tg_session_id
-        )
+        tg_session = await Sessions.get(session=session, id=tg_session_id)
         if tg_session:
             async with ConnectManager(
                 session=tg_session.session,

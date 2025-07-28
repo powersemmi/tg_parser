@@ -1,14 +1,16 @@
 from .base import Base, BaseSchema, mapper_registry, metadata
-from .telegram.entities import TelegramEntity
-from .telegram.mapping import TelegramSessionEntityMap
-from .telegram.sessions import TelegramSession
+from .telegram.channel_metadata import ChannelMetadata
+from .telegram.entities import Entities
+from .telegram.session_entity_map import SessionEntityMap
+from .telegram.sessions import Sessions
 
 __all__ = [
     "Base",
     "BaseSchema",
-    "TelegramEntity",
-    "TelegramSession",
-    "TelegramSessionEntityMap",
+    "ChannelMetadata",
+    "Entities",
+    "SessionEntityMap",
+    "Sessions",
     "mapper_registry",
     "metadata",
 ]

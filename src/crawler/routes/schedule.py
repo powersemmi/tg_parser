@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.utils.nats.resource_manager import ResourceLockManager
 from crawler.database.pg.db import get_session
-from crawler.database.pg.schemas import TelegramSession
+from crawler.database.pg.schemas import Sessions
 from crawler.procedures.schedule import handle_schedule
 from crawler.schemas.message import MessageResponseModel
 from crawler.schemas.schedule import ScheduleParseMessageSchema
@@ -71,7 +71,7 @@ async def handle_schedules(
         Собранные сообщения в формате MessageResponseModel для
         отправки в хранилище данных
     """
-    db_entity: TelegramSession | None = None
+    db_entity: Sessions | None = None
     try:
         async for message_response in handle_schedule(
             session=session,

@@ -13,7 +13,7 @@ async def test_lock_failure_already_taken(
     broker_mock: tuple[Any, Any],
 ) -> None:
     broker, kv = broker_mock
-    kv.create_entity.side_effect = KeyValueError(code=666)
+    kv.create.side_effect = KeyValueError(code=666)
 
     manager = ResourceLockManager(
         broker=broker,

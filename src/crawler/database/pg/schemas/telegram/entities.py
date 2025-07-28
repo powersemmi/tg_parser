@@ -10,7 +10,7 @@ from crawler.database.pg.schemas.base import BaseSchema
 logger = logging.getLogger(__name__)
 
 
-class TelegramEntity(BaseSchema):
+class Entities(BaseSchema):
     """Модель сущности Telegram (канала, чата, пользователя).
 
     Хранит основную информацию о сущностях Telegram, которые используются
@@ -20,7 +20,6 @@ class TelegramEntity(BaseSchema):
     - entity_url: URL сущности для доступа в Telegram
     """
 
-    __tablename__ = "entities"
     __table_args__ = ({"schema": "crawler"},)
     entity_id: Mapped[int] = mapped_column(BigInteger)
     entity_name: Mapped[str]
@@ -38,7 +37,7 @@ class TelegramEntity(BaseSchema):
             channel_url: URL канала
 
         Returns:
-            Объект TelegramEntity или None, если не найден
+            Объект Entities или None, если не найден
         """
         stmt = select(cls).where(cls.entity_url == channel_url)
         result = await session.execute(stmt)
@@ -63,16 +62,30 @@ class TelegramEntity(BaseSchema):
 
         Returns:
             Кортеж (entity, is_new), где:
-            - entity: объект TelegramEntity
+            - entity: объект Entities
             - is_new: флаг, показывающий, была ли создана новая сущность
         """
+        # Сначала пробуем найти существующую сущность по URL
+        existing_entity = await cls.get_by_url(session, channel_url)
 
-        return await super()._create(
+        if existing_entity is not None:
+            return existing_entity, False
+
+        # Если не найдено по URL, проверяем по entity_id
+        existing_entity = await cls.get_by_entity_id(session, entity_id)
+
+        if existing_entity is not None:
+            return existing_entity, False
+
+        # Создаем новую сущность, если не найдена
+        new_entity = await super()._create(
             session=session,
             entity_id=entity_id,
             entity_name=entity_name,
             entity_url=channel_url,
         )
+
+        return new_entity, True
 
     @classmethod
     async def get_by_entity_id(
@@ -86,7 +99,7 @@ class TelegramEntity(BaseSchema):
             entity_id: ID сущности (entity_id, не первичный ключ id)
 
         Returns:
-            Объект TelegramEntity или None, если не найден
+            Объект Entities или None, если не найден
         """
         stmt = select(cls).where(cls.entity_id == entity_id)
         result = await session.execute(stmt)

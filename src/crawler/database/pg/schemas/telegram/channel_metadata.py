@@ -7,10 +7,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import and_, or_
 
 from crawler.database.pg.schemas.base import BaseSchema
-from crawler.database.pg.schemas.telegram.entities import TelegramEntity
+
+from .entities import Entities
 
 
-class TelegramChannelCollection(BaseSchema):
+class ChannelMetadata(BaseSchema):
     """
     Хранит метаданные о сборе данных из каналов Telegram.
 
@@ -22,27 +23,10 @@ class TelegramChannelCollection(BaseSchema):
     повторного сбора тех же самых сообщений при следующих запросах.
     """
 
-    __tablename__ = "channel_collections"
-    __table_args__ = (
-        UniqueConstraint(
-            "entity_id",
-            "from_message_id",
-            "to_message_id",
-            name="uix_entity_message_range",
-        ),
-        Index(
-            "ix_entity_datetime_range",
-            "entity_id",
-            "from_datetime",
-            "to_datetime",
-        ),
-        {"schema": "crawler"},
+    entity_id: Mapped[int] = mapped_column(
+        ForeignKey(Entities.id, ondelete="CASCADE")
     )
-
-    entity_id: Mapped[int] = mapped_column(ForeignKey("crawler.entities.id"))
-    entity: Mapped[TelegramEntity] = relationship(
-        "TelegramEntity", lazy="joined"
-    )
+    entity: Mapped[Entities] = relationship("Entities", lazy="joined")
 
     # Диапазон сообщений по ID
     from_message_id: Mapped[int] = mapped_column(BigInteger)
@@ -55,6 +39,22 @@ class TelegramChannelCollection(BaseSchema):
     # Количество собранных сообщений
     messages_count: Mapped[int] = mapped_column(Integer, default=0)
 
+    __table_args__ = (
+        UniqueConstraint(
+            entity_id,
+            from_message_id,
+            to_message_id,
+            name="uix_entity_message_range",
+        ),
+        Index(
+            "ix_entity_datetime_range",
+            "entity_id",
+            "from_datetime",
+            "to_datetime",
+        ),
+        {"schema": "crawler"},
+    )
+
     @classmethod
     async def check_overlap(
         cls,
@@ -62,7 +62,7 @@ class TelegramChannelCollection(BaseSchema):
         entity_id: int,
         from_datetime: datetime,
         to_datetime: datetime | None,
-    ) -> tuple[bool, list["TelegramChannelCollection"]]:
+    ) -> tuple[bool, list["ChannelMetadata"]]:
         """
         Проверяет, пересекается ли указанный временной диапазон с
         уже собранными данными.
@@ -201,12 +201,12 @@ class TelegramChannelCollection(BaseSchema):
         from_datetime: datetime,
         to_datetime: datetime,
         messages_count: int,
-    ) -> "TelegramChannelCollection":
+    ) -> "ChannelMetadata":
         """
         Создает новую запись о собранных данных из канала.
 
         Создаёт и сохраняет в базе данных экземпляр модели
-        TelegramChannelCollection с информацией о диапазоне собранных
+        ChannelCollection с информацией о диапазоне собранных
         сообщений и их количестве.
         Выполняет flush для получения ID созданной записи.
 
@@ -220,7 +220,7 @@ class TelegramChannelCollection(BaseSchema):
             messages_count: Количество сообщений в коллекции
 
         Returns:
-            Созданный экземпляр модели TelegramChannelCollection
+            Созданный экземпляр модели ChannelCollection
         """
         collection = cls(
             entity_id=entity_id,
@@ -237,7 +237,7 @@ class TelegramChannelCollection(BaseSchema):
     @classmethod
     async def get_channel_collections(
         cls, session: AsyncSession, entity_id: int, from_datetime: datetime
-    ) -> list["TelegramChannelCollection"]:
+    ) -> list["ChannelMetadata"]:
         """
         Получает все записи о сборах данных для указанного канала
         начиная с заданной даты.
@@ -252,7 +252,7 @@ class TelegramChannelCollection(BaseSchema):
             from_datetime: Минимальная дата начала коллекции
 
         Returns:
-            Список объектов TelegramChannelCollection,
+            Список объектов ChannelCollection,
             отсортированных по дате начала
         """
         stmt = (

@@ -36,7 +36,7 @@ format = "python -m ruff format --preview ."
 mypy = "python -m mypy ."
 lint = {composite = ["format", "check", "mypy"]}
 # migrates
-alembic = "alembic -c src/chat_parser/migrations/alembic.ini "
+alembic = "alembic -c src/crawler/migrations/alembic.ini "
 migrate = {composite = ["alembic upgrade head"]}
 downgrade = {composite = ["alembic downgrade"]}
 makemigration = {composite = ["alembic revision --autogenerate -m"]}
