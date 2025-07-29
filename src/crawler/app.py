@@ -1,8 +1,10 @@
+import asyncio
 import logging
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from logging import Logger
+from typing import cast
 
 from faststream import ContextRepo, FastStream
 from logging518 import config
@@ -11,11 +13,20 @@ from common.utils.nats.resource_manager import ResourceLockManager
 from crawler.brokers import broker
 from crawler.database.pg.db import async_session
 from crawler.database.pg.schemas.telegram.sessions import Sessions
-from crawler.routes import new_channel, schedule
+from crawler.routes import manage_resource, new_channel, schedule
 from crawler.settings import settings
 
 sys.excepthook = sys.__excepthook__
 logger: Logger = logging.getLogger(__name__)
+
+
+async def auto_refresher(context: ContextRepo) -> None:
+    logger.info("auto refresher: Start.")
+    while rlm := cast(ResourceLockManager | None, context.get("rlm", None)):
+        if rlm:
+            logger.info("auto refresher: Refreshing.")
+            await rlm.refresh()
+        await asyncio.sleep(settings.NATS_KV_TTL // 2)
 
 
 @asynccontextmanager
@@ -42,7 +53,13 @@ async def lifespan(context: ContextRepo) -> AsyncIterator[None]:
         ttl=settings.NATS_KV_TTL,
     ) as rlm:
         context.set_global("rlm", rlm)
+        refresh_task = asyncio.create_task(auto_refresher(context))
+        refresh_task.add_done_callback(
+            lambda x: context.reset_global("auto_refresher")
+        )
+        context.set_global("auto_refresher", refresh_task)
         yield
+        context.reset_global("rlm")
 
 
 def create_app() -> FastStream:
@@ -62,5 +79,6 @@ def create_app() -> FastStream:
 
     broker.include_router(new_channel.router)
     broker.include_router(schedule.router)
+    broker.include_router(manage_resource.router)
 
     return application

@@ -14,12 +14,23 @@ import asyncpg
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
+from common.utils.aware_datetime import aware_now
+
 # Конфигурация
 DB_DSN = "ваша строка подключения к базе"  # например, 'postgresql+asyncpg://user:password@host:port/dbname'
 API_ID = ...  # Ваш API ID
 API_HASH = "ваш API хэш"
 PHONE = "ваш номер телефона"
-PROXY = ("socks5", "proxy_host", 8080)  # Или None, если прокси не нужен
+# PROXY = {
+#     'proxy_type': 'socks5',  # Or 'http', 'mtproto'
+#     'addr': 'proxy_ip_address',  # Replace with your proxy IP
+#     'port': 1234,  # Replace with your proxy port
+#     'username': 'your_proxy_username',  # Optional: if your proxy requires authentication
+#     'password': 'your_proxy_password',  # Optional: if your proxy requires authentication
+#     'rdns': True # Optional: whether to use remote or local resolve, default remote
+# }
+# Или None, если прокси не нужен
+PROXY = None
 
 
 async def main():
@@ -27,7 +38,7 @@ async def main():
     conn = await asyncpg.connect(dsn=DB_DSN)
 
     # Создание клиента и авторизация
-    with TelegramClient(
+    async with TelegramClient(
         StringSession(),
         API_ID,
         API_HASH,
@@ -42,19 +53,21 @@ async def main():
     # Вставляем или обновляем запись в базу данных
     await conn.execute(
         """
-    INSERT INTO crawler.sessions (session, api_id, api_hash, tel, proxy)
-    VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO crawler.sessions (session, api_id, api_hash, tel, proxy, created_at)
+    VALUES ($1, $2, $3, $4, $5, $6)
     ON CONFLICT (tel) DO UPDATE SET
         session = EXCLUDED.session,
         api_id = EXCLUDED.api_id,
         api_hash = EXCLUDED.api_hash,
-        proxy = EXCLUDED.proxy
+        proxy = EXCLUDED.proxy,
+        created_at = EXCLUDED.created_at
     """,
         session_str,
         API_ID,
         API_HASH,
         PHONE,
         str(PROXY),
+        aware_now(),
     )
 
     print("Сессия успешно добавлена в базу.")
