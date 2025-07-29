@@ -1,0 +1,72 @@
+@startuml
+!theme plain
+title Parser Module Class Diagram
+
+package "Parser Module" {
+    class TelegramMessageMetadata {
+        + from_message_id: int
+        + to_message_id: int
+        + from_datetime: datetime
+        + to_datetime: datetime
+        + count: int
+        + update_message(message_id: int, message_date: datetime): void
+        + get_stats(): tuple
+    }
+
+    class MessageDict <<TypedDict>> {
+        + message_id: int
+        + entity_id: int
+        + entity_name: str
+        + sender_id: int
+        + sender_name: str
+        + date: datetime
+        + message: str
+        + reactions: list[ReactionDict]
+        + views: int
+        + forwards: int
+        + replies: int
+        + media_type: str
+        + media_url: str
+        + reply_to_message_id: int
+        + metadata: dict[str, Any]
+    }
+
+    class ReactionDict <<TypedDict>> {
+        + emoji: str
+        + count: int
+    }
+
+    note top of MessageDict
+        Основная структура данных
+        для представления сообщения
+        из Telegram API
+    end note
+
+    class ParserFunctions <<static>> {
+        + collect_messages(entity, connect_manager, condition): AsyncIterator
+        + extract_telethon_message_data(message, entity): MessageDict
+        + _iter_messages_locked(connect_manager, entity): AsyncIterator[Message]
+        + _handle_reaction(reaction): str
+        + _handle_flood_wait_error(e, metadata, entity): bool
+        + _extract_sender_info(message): tuple[int, str]
+        + _extract_reactions(message): list[ReactionDict]
+        + _extract_message_metadata(message): dict[str, Any]
+        + _extract_media_info(message): tuple[str, str]
+    }
+}
+
+package "Telethon Types" {
+    class Message
+    class Entity
+    class ReactionType
+}
+
+MessageDict --> ReactionDict
+TelegramMessageMetadata --> MessageDict
+ParserFunctions --> MessageDict
+ParserFunctions --> TelegramMessageMetadata
+ParserFunctions --> Message
+ParserFunctions --> Entity
+ParserFunctions --> ReactionType
+
+@enduml

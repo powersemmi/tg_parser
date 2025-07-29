@@ -4,15 +4,20 @@ from pydantic import BaseModel, Field
 
 
 class ScheduleParseMessageSchema(BaseModel):
+    """Message schema for scheduled parsing tasks.
+
+    Defines the structure of schedule messages from the message broker.
+    """
+
     channel_id: Annotated[
         int,
-        Field(..., description="id сообщества/пользователя/чат"),
+        Field(..., description="ID of the community/user/chat"),
     ]
-    from_message_id: Annotated[
+    last_message_id: Annotated[
         int,
         Field(
             ...,
             gt=0,
-            description="С какого id сообщения собирать",
+            description="Our last message ID in base",
         ),
     ]

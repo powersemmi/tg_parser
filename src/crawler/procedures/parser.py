@@ -1,68 +1,416 @@
-import asyncio
-import logging
-from collections.abc import AsyncGenerator, Callable
+"""Business logic for handling scheduled parsing tasks.
 
-import asyncstdlib
-from telethon.tl.custom.message import Message
+Contains functions for processing scheduled message collection.
+"""
+
+import logging
+from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, TypedDict
+
+from telethon.errors import FloodWaitError
+from telethon.hints import Entity
+from telethon.tl import TLObject
+from telethon.tl.types import (
+    Message,
+    ReactionCustomEmoji,
+    ReactionEmoji,
+    ReactionEmpty,
+    ReactionPaid,
+)
+
+from crawler.database.tg import ConnectManager
 
 logger = logging.getLogger(__name__)
 
+type ReactionType = (
+    ReactionEmoji | ReactionCustomEmoji | ReactionPaid | ReactionEmpty
+)
 
-async def _iter_messages_locked(entity: int) -> AsyncGenerator[Message, None]:
-    async with TGSessionManager.client_session() as client:
+
+@dataclass
+class TelegramMessageMetadata:
+    """Метаданные для сбора статистики сообщений канала Telegram.
+
+    Отслеживает идентификаторы сообщений, временные метки и количество
+    обработанных сообщений. Используется для создания записей о собранных
+    коллекциях в базе данных.
+
+    Атрибуты:
+        from_message_id: ID первого сообщения в коллекции
+        to_message_id: ID последнего сообщения в коллекции
+        from_datetime: Дата/время первого сообщения
+        to_datetime: Дата/время последнего сообщения
+        count: Количество сообщений в коллекции
+    """
+
+    from_message_id: int | None = None
+    to_message_id: int | None = None
+    from_datetime: datetime | None = None
+    to_datetime: datetime | None = None
+    count: int = 0
+
+    def update_message(self, message_id: int, message_date: datetime) -> None:
+        """Обновляет метаданные информацией о новом сообщении.
+
+        Если это первое сообщение (from_message_id = None), то обновляет
+        начальные значения. В любом случае обновляет конечные значения и
+        увеличивает счетчик сообщений.
+
+        Args:
+            message_id: ID обработанного сообщения
+            message_date: Дата/время обработанного сообщения
+        """
+        if self.from_message_id is None:
+            self.from_message_id = message_id
+            self.from_datetime = message_date
+
+        self.to_message_id = message_id
+        self.to_datetime = message_date
+        self.count += 1
+
+    def get_stats(
+        self,
+    ) -> tuple[int | None, int | None, datetime | None, datetime | None, int]:
+        """Получение статистики в виде кортежа.
+
+        Удобный метод для извлечения всех статистических данных в
+        структурированном формате.
+
+        Returns:
+            Кортеж, содержащий (from_message_id, to_message_id, from_datetime,
+            to_datetime, count)
+        """
+        return (
+            self.from_message_id,
+            self.to_message_id,
+            self.from_datetime,
+            self.to_datetime,
+            self.count,
+        )
+
+
+class ReactionDict(TypedDict):
+    """Словарь для представления реакции на сообщение.
+
+    Используется для структурированного хранения информации о реакциях
+    пользователей на сообщения в каналах Telegram.
+
+    Атрибуты:
+        emoji: Эмодзи или ID кастомной реакции
+        count: Количество реакций данного типа
+    """
+
+    emoji: str  # Эмодзи или ID кастомной реакции
+    count: int  # Количество реакций данного типа
+
+
+class MessageDict(TypedDict):
+    """Словарь для представления сообщения из Telegram.
+
+    Используется для внутренней обработки сообщений в procedures.
+    Структура соответствует MessageResponseModel и отражает основные поля
+    из telethon.tl.types.Message:
+
+    - id (int) -> message_id: ID сообщения
+    - date (datetime): дата отправки
+    - message/text (str) -> message: текст сообщения
+    - from_id (PeerUser) -> sender_id: отправитель
+    - peer_id (Peer) -> entity_id: ID чата/канала
+    - reply_to (MessageReplyHeader) -> reply_to_message_id:
+    ссылка на сообщение-ответ
+    - replies (MessageReplies): информация о ответах на сообщение
+    - views (int): количество просмотров
+    - forwards (int): количество пересылок
+    - media (MessageMedia): медиа-контент в сообщении
+    - reactions (MessageReactions): реакции на сообщение
+    """
+
+    message_id: int
+    entity_id: int
+    entity_name: str
+    sender_id: int | None
+    sender_name: str | None
+    date: datetime
+    message: str  # Текст сообщения (из message или text поля)
+    reactions: list[ReactionDict]  # Список реакций с emoji и count
+    views: int | None
+    forwards: int | None
+    replies: int | None
+    media_type: str | None
+    media_url: str | None
+    reply_to_message_id: int | None
+    metadata: dict[str, Any]  # Дополнительные данные (entities и т.д.)
+
+
+async def _iter_messages_locked(
+    connect_manager: ConnectManager, entity: Entity
+) -> AsyncIterator[Message]:
+    """Итерация по сообщениям для заданной сущности с блокировкой клиента.
+
+    Использует асинхронный контекстный менеджер connect_manager.get_client()
+    для безопасного доступа к клиенту Telegram API и итерации по сообщениям.
+
+    Args:
+        connect_manager: Менеджер соединения с Telegram API
+        entity: Сущность Telegram (канал, чат, пользователь)
+
+    Yields:
+        Сообщения Telegram API (объекты Message)
+    """
+    async with connect_manager.get_client() as client:
         async for message in client.iter_messages(
             entity=entity, reverse=False
         ):
             yield message
 
 
-async def try_find_channel_id(): ...
+def _handle_reaction(reaction: ReactionType) -> str:
+    match reaction:
+        case ReactionEmoji():
+            return reaction.emoticon
+        case ReactionCustomEmoji():
+            return str(reaction.document_id)
+        case ReactionPaid():
+            return "PAID STAR"
+        case _:
+            return "UNKNOWN"
 
 
-async def crawl_messages(
-    channel: FashionChannel,
-    s3_client: BaseClient,
-    bucket: str,
+def _handle_flood_wait_error(
+    e: FloodWaitError,
+    metadata: TelegramMessageMetadata,
+    entity: Entity,
+) -> bool:
+    """Handle FloodWaitError from Telegram API.
+
+    Args:
+        e: FloodWaitError exception
+        metadata: Collection metadata
+        entity: Channel entity
+
+    Returns:
+        True if partial data was collected, False otherwise
+    """
+    logger.warning(
+        "FloodWaitError: need to wait %s seconds for channel %s",
+        e.seconds,
+        entity.username,
+    )
+    # Save what we've collected so far
+    if metadata.count > 0:
+        logger.info(
+            "Collected %s messages before FloodWaitError",
+            metadata.count,
+        )
+        return True
+    return False
+
+
+def _extract_sender_info(message: Message) -> tuple[int | None, str | None]:
+    """Извлекает информацию об отправителе сообщения.
+
+    Args:
+        message: Объект сообщения Telethon
+
+    Returns:
+        Кортеж из (sender_id, sender_name)
+    """
+    # Извлекаем ID отправителя
+    sender_id = None
+    if hasattr(message, "from_id") and message.from_id:
+        sender_id = getattr(message.from_id, "user_id", None)
+
+    # Получаем имя отправителя
+    sender_name = None
+    if hasattr(message, "sender") and message.sender:
+        if hasattr(message.sender, "first_name"):
+            first_name = getattr(message.sender, "first_name", "")
+            last_name = getattr(message.sender, "last_name", "")
+            sender_name = f"{first_name} {last_name}".strip()
+        elif hasattr(message.sender, "title"):
+            sender_name = getattr(message.sender, "title", None)
+
+    return sender_id, sender_name
+
+
+def _extract_reactions(message: Message) -> list[ReactionDict]:
+    """Извлекает реакции на сообщение.
+
+    Args:
+        message: Объект сообщения Telethon
+
+    Returns:
+        Список реакций
+    """
+    if not hasattr(message, "reactions") or not message.reactions:
+        return []
+
+    if not hasattr(message.reactions, "results"):
+        return []
+
+    return [
+        ReactionDict(emoji=_handle_reaction(rc.reaction), count=rc.count)
+        for rc in message.reactions.results
+    ]
+
+
+def _extract_message_metadata(message: Message) -> dict[str, Any]:
+    """Извлекает дополнительные метаданные сообщения.
+
+    Args:
+        message: Объект сообщения Telethon
+
+    Returns:
+        Словарь с метаданными
+    """
+    metadata_dict = {}
+
+    if hasattr(message, "entities") and message.entities:
+        metadata_dict["entities"] = [
+            {
+                "type": e.__class__.__name__,
+                "offset": e.offset,
+                "length": e.length,
+            }
+            for e in message.entities
+        ]
+
+    return metadata_dict
+
+
+def _extract_media_info(message: Message) -> tuple[str | None, str | None]:
+    """Извлекает информацию о медиа-контенте сообщения.
+
+    Args:
+        message: Объект сообщения Telethon
+
+    Returns:
+        Кортеж из (media_type, media_url)
+    """
+    media_type = None
+    media_url = None
+
+    if hasattr(message, "media") and message.media:
+        media_type = message.media.__class__.__name__
+        # URL медиа можно было бы извлечь, но требует дополнительной обработки
+
+    return media_type, media_url
+
+
+def extract_telethon_message_data(
+    message: Message, entity: Entity
+) -> MessageDict:
+    """Извлекает данные из объекта Message библиотеки Telethon.
+
+    Комплексная функция для обработки всех полей из telethon.tl.types.Message
+    и преобразования их в унифицированный формат MessageDict.
+    Извлекает информацию о сообщении, отправителе, реакциях, медиа-контенте
+    и других атрибутах.
+
+    Использует вспомогательные функции для извлечения отдельных компонентов:
+    - _extract_sender_info() для данных отправителя
+    - _extract_reactions() для реакций на сообщение
+    - _extract_message_metadata() для метаданных сообщения
+    - _extract_media_info() для данных о медиа-контенте
+
+    Args:
+        message: Объект сообщения Telethon
+        entity: Сущность Telegram (канал, чат, пользователь)
+
+    Returns:
+        Структурированный словарь MessageDict с данными сообщения
+    """
+    # Получаем основные компоненты сообщения из вспомогательных функций
+    sender_id, sender_name = _extract_sender_info(message)
+    reactions_list = _extract_reactions(message)
+    metadata_dict = _extract_message_metadata(message)
+    media_type, media_url = _extract_media_info(message)
+
+    # Получаем текст сообщения
+    message_text = ""
+    if hasattr(message, "message"):
+        message_text = message.message or ""
+
+    # Получаем ID сообщения, на которое отвечают
+    reply_to_msg_id = None
+    if hasattr(message, "reply_to") and message.reply_to:
+        reply_to_msg_id = getattr(message.reply_to, "reply_to_msg_id", None)
+
+    # Получаем число ответов на сообщение
+    replies_count = None
+    if hasattr(message, "replies") and isinstance(message.replies, TLObject):
+        replies_count = message.replies.replies
+
+    # Формируем словарь сообщения
+    return MessageDict(
+        message_id=message.id,
+        entity_id=entity.id,
+        entity_name=entity.username,
+        sender_id=sender_id,
+        sender_name=sender_name,
+        date=message.date,
+        message=message_text,
+        reactions=reactions_list,
+        views=message.views,
+        forwards=message.forwards,
+        replies=replies_count,
+        media_type=media_type,
+        media_url=media_url,
+        reply_to_message_id=reply_to_msg_id,
+        metadata=metadata_dict,
+    )
+
+
+async def collect_messages(
+    entity: Entity,
+    connect_manager: ConnectManager,
     condition: Callable[[Message], bool],
-) -> None:
+) -> AsyncIterator[tuple[MessageDict | None, TelegramMessageMetadata | None]]:
     """
-    Функция ходит с последнего сообщения в чате до тех пор, пока
-    не удовлетворит condition и сохраняет текст сообщений в базу
+    Сбор сообщений из сущности Telegram с использованием подключенного клиента.
 
-    :param bucket: Бакет для s3
-    :param s3_client: Клиент s3
-    :param entity: Объект идентифицирующий чат в Telegram.
-    :param channel: Объект с информацией о канале.
-    :param condition: Функция, которая определяет когда сбору прекратиться,
-                      в случае если функция всегда будет
-                      возвращать False, сбор будет происходить до тех пор,
-                      пока функция не дойдёт до начала канала
+    Основная функция для сбора сообщений из каналов, чатов или
+    пользователей Telegram.
+    Итерирует по сообщениям, применяет условие фильтрации, обрабатывает ошибки
+    ограничения скорости (FloodWaitError) и собирает метаданные коллекции.
+
+    Args:
+        entity: Сущность Telegram для сбора сообщений
+        connect_manager: Подключенный клиент Telegram
+        condition: Условие для фильтрации сообщений (например, по отправителю)
+                   Когда условие возвращает True, сбор прекращается
+
+    Yields:
+        Кортеж из (собранное_сообщение, метаданные), где:
+        - собранное_сообщение: структура MessageDict с данными сообщения
+          или None в случае ошибки
+        - метаданные: объект TelegramMessageMetadata с метаданными коллекции
+          или None в случае ошибки
     """
-    counter = 0
-    tasks = []
-    channel_id = int(f"-100{channel.id}")
-    async with TGSessionManager.client_session() as client:
-        try:
-            entity = await client.get_input_entity(channel_id)
-        except ValueError:
-            entity = await client.get_entity(channel.url)
-    async for counter, message in asyncstdlib.enumerate(
-        _iter_messages_locked(entity=entity)
-    ):
-        try:
+    metadata: TelegramMessageMetadata | None = None
+    # Обрабатываем полученные сообщения
+    try:
+        async for message in _iter_messages_locked(
+            connect_manager=connect_manager, entity=entity
+        ):
             if condition(message):
                 break
-            tasks.append(
-                asyncio.create_task(
-                    _handle_message_result(
-                        channel=channel,
-                        s3_client=s3_client,
-                        bucket=bucket,
-                        message=message,
-                    )
-                )
-            )
-        except Exception as e:
-            logger.info(e, exc_info=True)
-    await asyncio.gather(*tasks)
-    logger.info("Processed %s messages", counter)
+
+            # Обновляем метаданные
+            if metadata is None:
+                metadata = TelegramMessageMetadata()
+            if metadata is not None:
+                metadata.update_message(message.id, message.date)
+
+            yield extract_telethon_message_data(message, entity), metadata
+    except FloodWaitError as e:
+        # Handle rate limiting from Telegram
+        if metadata is not None and _handle_flood_wait_error(
+            e, metadata, entity
+        ):
+            # Return final metadata
+            yield None, metadata
+        else:
+            yield None, None

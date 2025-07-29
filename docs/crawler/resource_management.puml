@@ -1,0 +1,64 @@
+@startuml
+!theme plain
+title Resource Management Component Diagram
+
+package "Resource Management" {
+    class ResourceLockManager {
+        - broker: NatsBroker
+        - key_prefix: str
+        - resource_ids: list[int]
+        - _states: dict[int, ResourceState]
+        - _current: ResourceState
+        - _lock: asyncio.Lock
+        - _kv_client: KeyValue
+        + lock(resource_id: int): bool
+        + unlock(resource_id: int): void
+        + refresh(): void
+        + session(): AsyncIterator[int]
+        + update_resources(new_ids: list[int]): void
+        + on_kv_event(key, operation, revision): void
+    }
+
+    class ResourceState {
+        + resource_id: int
+        + version: int
+        + locked: bool
+    }
+
+    class ConnectManager {
+        - _config: ClientConfig
+        - _client: TelegramClient
+        - _lock: asyncio.Lock
+        + open(): void
+        + close(): void
+        + get_client(): AsyncIterator[TelegramClient]
+        + update_credentials(**kwargs): void
+    }
+
+    class ClientConfig {
+        + session: str
+        + api_id: int
+        + api_hash: str
+        + proxy: str
+    }
+
+    class ProxySettings {
+        + url: AnyUrl
+        + to_telethon_proxy(): tuple
+    }
+}
+
+package "External" {
+    class NatsBroker
+    class KeyValue
+    class TelegramClient
+}
+
+ResourceLockManager --> ResourceState
+ResourceLockManager --> NatsBroker
+ResourceLockManager --> KeyValue
+ConnectManager --> ClientConfig
+ConnectManager --> TelegramClient
+ConnectManager --> ProxySettings
+
+@enduml
