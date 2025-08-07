@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from telethon.hints import Entity
 
 from common.utils.nats.resource_manager import ResourceLockManager
+from common.utils.telegram_rate_limiter import rate_limited_get_input_entity
 from crawler.database.pg.queries.session_entity import find_subscribed_session
 from crawler.database.pg.schemas import Entities, Sessions
 from crawler.database.pg.schemas.telegram.channel_metadata import (
@@ -95,7 +96,7 @@ async def _get_telegram_input_entity(
     channel_id: int,
     msg: NatsMessage,
 ) -> Entity | None:
-    """Получение Telegram input entity.
+    """Получение Telegram input entity с rate limiting.
 
     Args:
         connect_manager: Менеджер соединения
@@ -109,10 +110,16 @@ async def _get_telegram_input_entity(
     try:
         channel_id_formatted = int(f"-100{entity_id}")
         async with connect_manager.get_client() as client:
-            return await client.get_input_entity(channel_id_formatted)
+            return await rate_limited_get_input_entity(
+                client, channel_id_formatted
+            )
     except ValueError:
         await msg.nack()
         logger.error("Invalid channel_id: %s", channel_id)
+        return None
+    except Exception as e:
+        await msg.nack()
+        logger.error("Failed to get input entity: %s", e, exc_info=True)
         return None
 
 

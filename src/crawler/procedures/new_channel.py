@@ -10,6 +10,10 @@ from telethon.hints import Entity
 from telethon.tl.types import Channel, Chat, User
 
 from common.utils.nats.resource_manager import ResourceLockManager
+from common.utils.telegram_rate_limiter import (
+    rate_limited_get_entity,
+    rate_limited_get_input_entity,
+)
 from crawler.database.pg.queries.session_entity import (
     find_subscribed_session,
 )
@@ -83,7 +87,7 @@ async def _prepare_new_channel_session(
 
     async with connect_manager.get_client() as client:
         # Получаем информацию о канале из Telegram
-        tg_entity = await client.get_entity(channel_url)
+        tg_entity = await rate_limited_get_entity(client, channel_url)
 
     # В зависимости от типа сущности, получаем ID и имя
     if isinstance(tg_entity, Channel | Chat):
@@ -145,7 +149,7 @@ async def _prepare_subscribed_session(
         await connect_manager.open()
         channel_id = int(f"-100{db_entity.entity_id}")
         async with connect_manager.get_client() as client:
-            tg_entity = await client.get_input_entity(channel_id)
+            tg_entity = await rate_limited_get_input_entity(client, channel_id)
 
         return SessionResult(db_entity, connect_manager, db_session, tg_entity)
     else:
