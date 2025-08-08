@@ -1,0 +1,48 @@
+@startuml
+!theme plain
+title Session Lifecycle State Diagram
+
+[*] --> Disconnected
+
+state Disconnected {
+    Disconnected : No active connection
+    Disconnected : Client not initialized
+}
+
+state Connecting {
+    Connecting : Establishing connection
+    Connecting : Authenticating with Telegram
+}
+
+state Connected {
+    Connected : Active connection
+    Connected : Ready to process messages
+}
+
+state Processing {
+    Processing : Collecting messages
+    Processing : Handling API responses
+}
+
+state FloodWait {
+    FloodWait : Rate limited by Telegram
+    FloodWait : Waiting for timeout
+}
+
+state Error {
+    Error : Connection failed
+    Error : Authentication error
+}
+
+Disconnected --> Connecting : open()
+Connecting --> Connected : Success
+Connecting --> Error : Authentication failed
+Connected --> Processing : Start message collection
+Processing --> Connected : Collection complete
+Processing --> FloodWait : Rate limit hit
+FloodWait --> Processing : Timeout expired
+Processing --> Error : API error
+Error --> Disconnected : close()
+Connected --> Disconnected : close()
+
+@enduml

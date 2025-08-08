@@ -23,7 +23,7 @@ dependencies = [
     "python-socks[asyncio]==2.7.*",
     "asyncstdlib==3.13.*"
 ]
-requires-python = "==3.12.*"
+requires-python = "==3.13.*"
 readme = "README.md"
 license = {text = "MIT"}
 
@@ -36,7 +36,7 @@ format = "python -m ruff format --preview ."
 mypy = "python -m mypy ."
 lint = {composite = ["format", "check", "mypy"]}
 # migrates
-alembic = "alembic -c src/chat_parser/migrations/alembic.ini "
+alembic = "alembic -c src/crawler/migrations/alembic.ini "
 migrate = {composite = ["alembic upgrade head"]}
 downgrade = {composite = ["alembic downgrade"]}
 makemigration = {composite = ["alembic revision --autogenerate -m"]}
@@ -78,7 +78,7 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 79
 
 [tool.ruff.lint]
@@ -105,7 +105,19 @@ unfixable = []
 extend-ignore = ["F401", "F841", "RUF003", "RUF002", "RUF006", "RUF001"]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"src/tests/**.py" = ["S101"]
+"tests/**/*.py" = [
+    # at least these three should be fine in tests:
+    "S101", # asserts allowed in tests...
+    "ARG", # Unused function args -> fixtures, nevertheless, are functionally relevant...
+    "FBT", # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()
+    # The below are debateable
+    "PLR2004", # Magic value used in comparison, ...
+    "S311", # Standard pseudo-random generators are not suitable for cryptographic purposes
+    "RUF029",
+]
+"scripts/**/*.py" = [
+    'T201', 'E501'
+]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 7
@@ -127,6 +139,8 @@ exclude = ["venv", "scripts", "tmp"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = [".", "src",]
+log_cli = true
 
 [tool.logging]
 version = 1

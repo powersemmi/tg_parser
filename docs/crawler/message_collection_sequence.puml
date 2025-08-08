@@ -1,0 +1,54 @@
+@startuml
+!theme plain
+title Message Collection Sequence
+
+actor User
+participant "FastStream App" as App
+participant "NATS Broker" as NATS
+participant "ResourceLockManager" as RLM
+participant "ConnectManager" as CM
+participant "TelegramClient" as TGClient
+participant "Parser Module" as Parser
+participant "Database" as DB
+participant "Telegram API" as TGApi
+
+User -> App: Start crawling task
+App -> NATS: Subscribe to schedule events
+NATS -> App: Schedule event received
+
+App -> RLM: Request session resource
+RLM -> NATS: Check available sessions in KV
+NATS -> RLM: Return session availability
+RLM -> App: Provide session ID
+
+App -> CM: Create connection with session
+CM -> TGClient: Initialize with credentials
+CM -> TGApi: Connect to Telegram
+TGApi -> CM: Connection established
+
+App -> Parser: collect_messages(entity, connect_manager, condition)
+Parser -> CM: get_client() context
+CM -> Parser: Return TelegramClient
+
+loop For each message
+    Parser -> TGClient: iter_messages(entity)
+    TGClient -> TGApi: Request messages
+    TGApi -> TGClient: Message batch
+    Parser -> Parser: extract_telethon_message_data()
+    Parser -> Parser: Update metadata
+    Parser -> App: Yield (MessageDict, metadata)
+    App -> DB: Store message data
+end
+
+alt FloodWaitError
+    TGApi -> Parser: FloodWaitError
+    Parser -> Parser: Handle error, save partial data
+    Parser -> App: Return partial metadata
+end
+
+Parser -> CM: Release client
+CM -> TGClient: Disconnect
+App -> RLM: Release session resource
+RLM -> NATS: Update KV store
+
+@enduml
