@@ -44,7 +44,10 @@ services:
 
   nats:
     image: nats:2.11.4-alpine
-    command: -m 8222
+    command:
+      - "--debug"
+      - "--http_port=8222"
+      - "--jetstream"
     container_name: nats_dev
     restart: unless-stopped
     ports:
@@ -52,14 +55,18 @@ services:
       - "8222:8222"  # monitoring
     networks:
       - backend
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test: wget http://localhost:8222/healthz -q -S -O -
-      interval: 5s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8222/healthz || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 3
 
   nats_ui:
     image: ghcr.io/nats-nui/nui:latest
+    command:
+      - --nats-cli-contexts=http://nats:8222,http://nats:4222
     container_name: nats_ui
     restart: unless-stopped
     depends_on:
@@ -69,11 +76,6 @@ services:
       - NATS_SERVER=http://nats:8222
     ports:
       - "31311:31311"  # веб-интерфейс NATS-UI
-    healthcheck:
-      test: curl -f http://localhost:8282
-      interval: 5s
-      timeout: 5s
-      retries: 10
     networks:
       - backend
 
@@ -100,7 +102,7 @@ services:
 
   app:
     deploy:
-      replicas: 1
+      replicas: 0
     build:
       context: .
       dockerfile: Dockerfile
